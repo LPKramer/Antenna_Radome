@@ -1,0 +1,91 @@
+# Dipolo com perna em Y -- reproduz o Dipolo.cst existente.
+#
+# Os parametros e valores vieram de Dipolo/Model/Parameters.json e a geometria de
+# Dipolo/Model/3D/ModelHistory.json.  Serve como caso de regressao: se o antfdm
+# gera esta antena e ela bate com o projeto original, o pipeline esta correto.
+#
+# Diferenca deliberada em relacao ao modelo original: la o fio de cobre tem raio
+# "Pla+Bitola/2", ou seja, o plastico foi simulado como metal.  Aqui o cobre tem
+# raio "Bitola/2" e o PLA e um dieletrico separado, com eps corrigido pelo infill.
+
+name: dipolo_y
+f0_mhz: 1300
+
+params:
+  Gap:
+    expr: "11.599283958933"
+    description: "Abertura entre os dois bracos, no ponto de alimentacao (mm)"
+  Ltotal:
+    expr: "107.44701481255"
+    description: "Comprimento total ponta a ponta (mm)"
+  Sec_inical:
+    expr: "14.456461165674"
+    description: "Trecho reto entre a alimentacao e o inicio da perna em Y (mm)"
+  cordenadaNosolda:
+    expr: "14.035384448803"
+    description: "Avanco em X do no de solda em relacao a Sec_inical (mm)"
+  cordenadaNosoldaX:
+    expr: "Sec_inical + cordenadaNosolda"
+    description: "Coordenada X do no de solda (mm)"
+  cordenadaNosoldaY:
+    expr: "10.433666976226"
+    description: "Altura do no de solda (mm)"
+  Ang:
+    expr: "1.0690533950457"
+    description: "Angulo auxiliar da perna em Y (rad)"
+  Cotg:
+    expr: "(tan(Ang/(2*pi)))**-1"
+    description: "Cotangente de Ang; avanco em X da descida da perna (mm)"
+  AnguloYperna:
+    expr: "45"
+    description: "Angulo nominal da perna em Y (graus)"
+  Radius:
+    expr: "3"
+    description: "Raio de filete dos cantos (mm)"
+  Bitola:
+    expr: "3/2"
+    description: "DIAMETRO do cobre nu do fio esmaltado (mm)"
+  Parede:
+    expr: "1"
+    description: "Espessura de PLA sobre o fio (mm)"
+
+conductor:
+  bitola: Bitola
+  material: Copper (annealed)
+
+radome:
+  parede: Parede
+  folga: 0.15
+  infill: 0.30
+  eps_solid: 2.75
+  tand_solid: 0.008
+
+feed:
+  p1: ["-Gap/2", "0", "0"]
+  p2: ["Gap/2", "0", "0"]
+  impedance: 50
+
+wires:
+  - name: braco_dir
+    role: driven
+    vertices:
+      - {x: "Gap/2", y: "0"}
+      - {x: "Gap/2 + Sec_inical", y: "0", fillet: Radius}
+      - {x: "cordenadaNosoldaX", y: "cordenadaNosoldaY", fillet: Radius}
+      - {x: "cordenadaNosoldaX + Cotg", y: "0", fillet: Radius}
+      - {x: "Ltotal/2", y: "0"}
+
+  - name: braco_esq
+    role: driven
+    mirror_of: braco_dir
+    mirror_axis: x
+
+sim:
+  fmin_mhz: 500
+  fmax_mhz: 2500
+  f0_mhz: 1300
+
+printer:
+  bed_x: 220
+  bed_y: 220
+  bed_z: 250

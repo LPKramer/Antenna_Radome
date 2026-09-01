@@ -1,0 +1,67 @@
+# Dipolo carregado por serpentina: cabe em menos espaco que meia onda.
+#
+# Serpentina montada a mao nunca sai duas vezes igual -- o passo e a altura dos
+# dentes mudam com a mao de quem dobra.  Impressa, o canal fixa a geometria, que
+# e o argumento inteiro deste projeto.
+#
+# 'n' e literal de proposito: numero de dentes muda a TOPOLOGIA, e topologia nao
+# pode ser parametro do CST -- o Parametric Update reconstroi dimensoes, nao
+# vertices novos.  Passo e altura sao parametros e continuam calibraveis.
+
+name: meander
+f0_mhz: 1300
+
+params:
+  F0:
+    expr: "1300"
+    description: "Frequencia alvo (MHz)"
+  Lambda:
+    expr: "300000/F0"
+    description: "Comprimento de onda no vacuo (mm)"
+  L_reta:
+    expr: "0.055*Lambda"
+    description: "Trecho reto entre a alimentacao e a serpentina (mm)"
+  P_passo:
+    expr: "6"
+    description: "Passo da serpentina (mm)"
+  H_dente:
+    expr: "7"
+    description: "Altura do dente da serpentina (mm)"
+  L_ponta:
+    expr: "0.045*Lambda"
+    description: "Trecho reto depois da serpentina (mm)"
+  Gap:
+    expr: "4"
+    description: "Abertura no ponto de alimentacao (mm)"
+  Radius:
+    expr: "1.2"
+    description: "Raio de filete dos cantos (mm)"
+  Bitola:
+    expr: "3/2"
+    description: "DIAMETRO do cobre nu (mm)"
+  Parede:
+    expr: "1"
+    description: "Espessura de PLA sobre o fio (mm)"
+
+conductor: {bitola: Bitola}
+radome: {parede: Parede, infill: 0.30}
+
+feed:
+  p1: ["-Gap/2", "0", "0"]
+  p2: ["Gap/2", "0", "0"]
+
+wires:
+  - name: braco_dir
+    role: driven
+    start: {x: "Gap/2", y: "0", dir: "0"}
+    blocks:
+      - {type: straight, len: L_reta, fillet: Radius}
+      - {type: meander, n: 4, pitch: P_passo, height: H_dente, fillet: Radius}
+      - {type: straight, len: L_ponta}
+
+  - name: braco_esq
+    role: driven
+    mirror_of: braco_dir
+    mirror_axis: x
+
+sim: {fmin_mhz: 700, fmax_mhz: 2200, f0_mhz: 1300}

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.2", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "antfdm"
+version = "0.1.0"
+description = "Prototipagem rapida de antenas de fio: sintese -> CST parametrico -> radome FDM"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2",
+    "sympy",
+    "pydantic>=2",
+    "pyyaml",
+    "build123d>=0.11",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6"]
+dev = ["pytest"]
+
+[project.scripts]
+antfdm = "antfdm.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["antfdm*"]
+
+[tool.setuptools.package-data]
+antfdm = ["recipes/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

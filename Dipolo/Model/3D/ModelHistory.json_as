@@ -1,0 +1,845 @@
+{
+    "general": {
+        "version": "2026.0",
+        "date": "2025-08-29",
+        "acis": "35.0.0",
+        "buildnumber": "20250829",
+        "project_type": "MWS",
+        "length": "mm",
+        "frequency": {
+            "unit": "MHz",
+            "minimum": "800",
+            "maximum": "1010",
+            "minimum_expr": "800",
+            "maximum_expr": "1010"
+        },
+        "time": "ns",
+        "created": "2026.0|35.0.0|20250829"
+    },
+    "history": [
+        {
+            "caption": "define curve line: curve1:BracoPrincipal",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"BracoPrincipal\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"gap/2\" ",
+                "     .Y1 \"-0\" ",
+                "     .X2 \"gap/2+Sec_inical\" ",
+                "     .Y2 \"0\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "store picked point: 1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"1\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:BracoPrincipal\", \"2\""
+            ]
+        },
+        {
+            "caption": "define curve line: curve1:YPerna",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"YPerna\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"xp(1)\" ",
+                "     .Y1 \"yp(1)\" ",
+                "     .X2 \"cordenadaNosoldaX\" ",
+                "     .Y2 \"cordenadaNosoldaY\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "store picked point: 2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"2\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "store picked point: 3",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"3\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "define curve line: curve1:line1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"line1\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"xp(3)\" ",
+                "     .Y1 \"yp(3)\" ",
+                "     .X2 \"CordenadaNosoldaX+Cotg\" ",
+                "     .Y2 \"0\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "rename curve item: curve1:line1 to: curve1:YBraco1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Curve.RenameItem \"curve1:line1\", \"curve1:YBraco1\""
+            ]
+        },
+        {
+            "caption": "store picked point: 4",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"4\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YBraco1\", \"2\""
+            ]
+        },
+        {
+            "caption": "define curve line: curve1:line1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"line1\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"xp(4)\" ",
+                "     .Y1 \"yp(4)\" ",
+                "     .X2 \"Ltotal/2\" ",
+                "     .Y2 \"0\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "pick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "unpick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.UnpickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "transform curve: mirror curve1:YBraco1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Transform ",
+                "     .Reset ",
+                "     .Name \"curve1:YBraco1\" ",
+                "     .Origin \"Free\" ",
+                "     .Center \"0\", \"cordenadaNosoldaY\", \"0\" ",
+                "     .PlaneNormal \"0\", \"1\", \"0\" ",
+                "     .MultipleObjects \"True\" ",
+                "     .GroupObjects \"False\" ",
+                "     .Repetitions \"1\" ",
+                "     .MultipleSelection \"True\" ",
+                "     .Destination \"\" ",
+                "     .Transform \"Curve\", \"Mirror\" ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "transform curve: mirror curve1:line1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Transform ",
+                "     .Reset ",
+                "     .Name \"curve1:line1\" ",
+                "     .Origin \"Free\" ",
+                "     .Center \"0\", \"cordenadaNosoldaY\", \"0\" ",
+                "     .PlaneNormal \"0\", \"1\", \"0\" ",
+                "     .MultipleObjects \"True\" ",
+                "     .GroupObjects \"False\" ",
+                "     .Repetitions \"1\" ",
+                "     .MultipleSelection \"False\" ",
+                "     .Destination \"\" ",
+                "     .Transform \"Curve\", \"Mirror\" ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define material: Copper (annealed)",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Material",
+                "     .Reset",
+                "     .Name \"Copper (annealed)\"",
+                "     .Folder \"\"",
+                "     .FrqType \"static\"",
+                "     .Type \"Normal\"",
+                "     .SetMaterialUnit \"Hz\", \"mm\"",
+                "     .Epsilon \"1\"",
+                "     .Mu \"1.0\"",
+                "     .Kappa \"5.8e+007\"",
+                "     .TanD \"0.0\"",
+                "     .TanDFreq \"0.0\"",
+                "     .TanDGiven \"False\"",
+                "     .TanDModel \"ConstTanD\"",
+                "     .KappaM \"0\"",
+                "     .TanDM \"0.0\"",
+                "     .TanDMFreq \"0.0\"",
+                "     .TanDMGiven \"False\"",
+                "     .TanDMModel \"ConstTanD\"",
+                "     .DispModelEps \"None\"",
+                "     .DispModelMu \"None\"",
+                "     .DispersiveFittingSchemeEps \"Nth Order\"",
+                "     .DispersiveFittingSchemeMu \"Nth Order\"",
+                "     .UseGeneralDispersionEps \"False\"",
+                "     .UseGeneralDispersionMu \"False\"",
+                "     .FrqType \"all\"",
+                "     .Type \"Lossy metal\"",
+                "     .SetMaterialUnit \"GHz\", \"mm\"",
+                "     .Mu \"1.0\"",
+                "     .Kappa \"5.8e+007\"",
+                "     .Rho \"8930.0\"",
+                "     .ThermalType \"Normal\"",
+                "     .ThermalConductivity \"401.0\"",
+                "     .SpecificHeat \"390\", \"J/K/kg\"",
+                "     .MetabolicRate \"0\"",
+                "     .BloodFlow \"0\"",
+                "     .VoxelConvection \"0\"",
+                "     .MechanicsType \"Isotropic\"",
+                "     .YoungsModulus \"120\"",
+                "     .PoissonsRatio \"0.33\"",
+                "     .ThermalExpansionRate \"17\"",
+                "     .Colour \"1\", \"1\", \"0\"",
+                "     .Wireframe \"False\"",
+                "     .Reflection \"False\"",
+                "     .Allowoutline \"True\"",
+                "     .Transparentoutline \"False\"",
+                "     .Transparency \"0\"",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define curve blend: curve1:blend1 on: YBraco1_1,line1_1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With BlendCurve ",
+                "  .Reset ",
+                "  .Name \"blend1\" ",
+                "  .Radius \"Radius\" ",
+                "  .Curve \"curve1\" ",
+                "  .CurveItem1 \"YBraco1_1\" ",
+                "  .CurveItem2 \"line1_1\" ",
+                "  .EdgeId1 \"1\" ",
+                "  .EdgeId2 \"1\" ",
+                "  .VertexId1 \"2\" ",
+                "  .VertexId2 \"1\" ",
+                "  .Create ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define curve blend: curve1:blend2 on: BracoPrincipal,YPerna",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With BlendCurve ",
+                "  .Reset ",
+                "  .Name \"blend2\" ",
+                "  .Radius \"Radius\" ",
+                "  .Curve \"curve1\" ",
+                "  .CurveItem1 \"BracoPrincipal\" ",
+                "  .CurveItem2 \"YPerna\" ",
+                "  .EdgeId1 \"1\" ",
+                "  .EdgeId2 \"1\" ",
+                "  .VertexId1 \"2\" ",
+                "  .VertexId2 \"1\" ",
+                "  .Create ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define curve blend: curve1:blend3 on: YBraco1,line1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With BlendCurve ",
+                "  .Reset ",
+                "  .Name \"blend3\" ",
+                "  .Radius \"Radius\" ",
+                "  .Curve \"curve1\" ",
+                "  .CurveItem1 \"YBraco1\" ",
+                "  .CurveItem2 \"line1\" ",
+                "  .EdgeId1 \"1\" ",
+                "  .EdgeId2 \"1\" ",
+                "  .VertexId1 \"2\" ",
+                "  .VertexId2 \"1\" ",
+                "  .Create ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "pick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "unpick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.UnpickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "define curve blend: curve1:blend4 on: YBraco1,YBraco1_1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With BlendCurve ",
+                "  .Reset ",
+                "  .Name \"blend4\" ",
+                "  .Radius \"Radius/3\" ",
+                "  .Curve \"curve1\" ",
+                "  .CurveItem1 \"YBraco1\" ",
+                "  .CurveItem2 \"YBraco1_1\" ",
+                "  .EdgeId1 \"1\" ",
+                "  .EdgeId2 \"1\" ",
+                "  .VertexId1 \"1\" ",
+                "  .VertexId2 \"1\" ",
+                "  .Create ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "clear picks",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.ClearAllPicks"
+            ]
+        },
+        {
+            "caption": "pick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCurveEndpointFromId \"curve1:YBraco1_1\", \"1\""
+            ]
+        },
+        {
+            "caption": "pick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "unpick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.UnpickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "unpick end point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.UnpickCurveEndpointFromId \"curve1:YBraco1_1\", \"1\""
+            ]
+        },
+        {
+            "caption": "store picked point: 5",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"5\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "store picked point: 6",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"6\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YBraco1_1\", \"1\""
+            ]
+        },
+        {
+            "caption": "define curve line: curve1:line2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"line2\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"xp(5)\" ",
+                "     .Y1 \"yp(5)\" ",
+                "     .X2 \"xp(6)\" ",
+                "     .Y2 \"yp(6)\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "store picked point: 7",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"7\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YPerna\", \"2\""
+            ]
+        },
+        {
+            "caption": "store picked point: 8",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"8\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YBraco1\", \"1\""
+            ]
+        },
+        {
+            "caption": "delete curve item: curve1:YPerna",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Curve.DeleteCurveItem \"curve1\", \"YPerna\""
+            ]
+        },
+        {
+            "caption": "delete curve item: curve1:line2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Curve.DeleteCurveItem \"curve1\", \"line2\""
+            ]
+        },
+        {
+            "caption": "store picked point: 9",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"9\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:blend2\", \"2\""
+            ]
+        },
+        {
+            "caption": "store picked point: 10",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.NextPickToDatabase \"10\" ",
+                "Pick.PickCurveEndpointFromId \"curve1:YBraco1_1\", \"1\""
+            ]
+        },
+        {
+            "caption": "define curve line: curve1:line2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Line",
+                "     .Reset ",
+                "     .Name \"line2\" ",
+                "     .Curve \"curve1\" ",
+                "     .X1 \"xp(9)\" ",
+                "     .Y1 \"yp(9)\" ",
+                "     .X2 \"xp(10)\" ",
+                "     .Y2 \"yp(10)\" ",
+                "     .Create",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define curvewire: curve1:wire1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset ",
+                "     .Name \"wire1\" ",
+                "     .Folder \"curve1\" ",
+                "     .Radius \"0.5\" ",
+                "     .Type \"CurveWire\" ",
+                "     .Curve \"curve1:YBraco1_1\" ",
+                "     .Material \"Copper (annealed)\" ",
+                "     .SolidWireModel \"True\" ",
+                "     .Termination \"Natural\" ",
+                "     .Mitering \"NewMiter\" ",
+                "     .AdvancedChainSelection \"True\" ",
+                "     .Add",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define curvewire: curve1:wire2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset ",
+                "     .Name \"wire2\" ",
+                "     .Folder \"curve1\" ",
+                "     .Radius \"0.5\" ",
+                "     .Type \"CurveWire\" ",
+                "     .Curve \"curve1:YBraco1\" ",
+                "     .Material \"Copper (annealed)\" ",
+                "     .SolidWireModel \"True\" ",
+                "     .Termination \"Natural\" ",
+                "     .Mitering \"NewMiter\" ",
+                "     .AdvancedChainSelection \"True\" ",
+                "     .Add",
+                "End With"
+            ]
+        },
+        {
+            "caption": "transform wire: mirror curve1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Transform ",
+                "     .Reset ",
+                "     .Name \"curve1\" ",
+                "     .Origin \"Free\" ",
+                "     .Center \"0\", \"0\", \"0\" ",
+                "     .PlaneNormal \"1\", \"0\", \"0\" ",
+                "     .MultipleObjects \"True\" ",
+                "     .GroupObjects \"False\" ",
+                "     .Repetitions \"1\" ",
+                "     .MultipleSelection \"False\" ",
+                "     .Material \"\" ",
+                "     .Transform \"Wire\", \"Mirror\" ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "new component: component1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Component.New \"component1\""
+            ]
+        },
+        {
+            "caption": "Convert wire to solid: component1:wire1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset",
+                "     .SolidName \"component1:wire1\"",
+                "     .Name \"wire1\"",
+                "     .Folder \"curve1\"",
+                "     .KeepWire \"False\"",
+                "     .ConvertToSolidShape",
+                "End With"
+            ]
+        },
+        {
+            "caption": "Convert wire to solid: component1:wire1_1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset",
+                "     .SolidName \"component1:wire1_1\"",
+                "     .Name \"wire1_1\"",
+                "     .Folder \"curve1\"",
+                "     .KeepWire \"False\"",
+                "     .ConvertToSolidShape",
+                "End With"
+            ]
+        },
+        {
+            "caption": "Convert wire to solid: component1:wire2",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset",
+                "     .SolidName \"component1:wire2\"",
+                "     .Name \"wire2\"",
+                "     .Folder \"curve1\"",
+                "     .KeepWire \"False\"",
+                "     .ConvertToSolidShape",
+                "End With"
+            ]
+        },
+        {
+            "caption": "Convert wire to solid: component1:wire2_1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Wire",
+                "     .Reset",
+                "     .SolidName \"component1:wire2_1\"",
+                "     .Name \"wire2_1\"",
+                "     .Folder \"curve1\"",
+                "     .KeepWire \"False\"",
+                "     .ConvertToSolidShape",
+                "End With"
+            ]
+        },
+        {
+            "caption": "clear picks",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.ClearAllPicks"
+            ]
+        },
+        {
+            "caption": "pick circle center point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCirclecenterFromId \"component1:wire2_1\", \"13\""
+            ]
+        },
+        {
+            "caption": "pick circle center point",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Pick.PickCirclecenterFromId \"component1:wire2\", \"13\""
+            ]
+        },
+        {
+            "caption": "define discrete port: 1",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With DiscretePort ",
+                "     .Reset ",
+                "     .PortNumber \"1\" ",
+                "     .Type \"SParameter\"",
+                "     .Label \"\"",
+                "     .Folder \"\"",
+                "     .Impedance \"50.0\"",
+                "     .Voltage \"1.0\"",
+                "     .Current \"1.0\"",
+                "     .Monitor \"True\"",
+                "     .Radius \"0.0\"",
+                "     .SetP1 \"True\", \"-5.7996419794665\", \"0\", \"0\"",
+                "     .SetP2 \"True\", \"5.7996419794665\", \"-0\", \"0\"",
+                "     .InvertDirection \"False\"",
+                "     .LocalCoordinates \"False\"",
+                "     .Wire \"\"",
+                "     .Position \"end1\"",
+                "     .Create ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define units",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Units ",
+                "     .SetUnit \"Length\", \"mm\"",
+                "     .SetUnit \"Temperature\", \"degC\"",
+                "     .SetUnit \"Voltage\", \"V\"",
+                "     .SetUnit \"Current\", \"A\"",
+                "     .SetUnit \"Resistance\", \"Ohm\"",
+                "     .SetUnit \"Conductance\", \"S\"",
+                "     .SetUnit \"Capacitance\", \"pF\"",
+                "     .SetUnit \"Inductance\", \"nH\"",
+                "     .SetUnit \"Frequency\", \"MHz\"",
+                "     .SetUnit \"Time\", \"ns\"",
+                "     .SetResultUnit \"frequency\", \"frequency\", \"\" ",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define frequency range",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Solver.FrequencyRange \"800\", \"900\""
+            ]
+        },
+        {
+            "caption": "define time domain solver parameters",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Mesh.SetCreator \"High Frequency\" ",
+                "",
+                "With Solver ",
+                "     .Method \"Hexahedral\"",
+                "     .StimulationPort \"All\"",
+                "     .StimulationMode \"All\"",
+                "     .SteadyStateLimit \"-40\"",
+                "     .MeshAdaption \"False\"",
+                "     .AutoNormImpedance \"False\"",
+                "     .NormingImpedance \"50\"",
+                "     .CalculateModesOnly \"False\"",
+                "     .SParaSymmetry \"False\"",
+                "     .StoreTDResultsInCache  \"False\"",
+                "     .RunDiscretizerOnly \"False\"",
+                "     .FullDeembedding \"False\"",
+                "     .SuperimposePLWExcitation \"False\"",
+                "     .UseSensitivityAnalysis \"False\"",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define frequency range",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Solver.FrequencyRange \"800\", \"1010\""
+            ]
+        },
+        {
+            "caption": "define boundaries",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Boundary",
+                "     .Xmin \"expanded open\"",
+                "     .Xmax \"expanded open\"",
+                "     .Ymin \"expanded open\"",
+                "     .Ymax \"expanded open\"",
+                "     .Zmin \"expanded open\"",
+                "     .Zmax \"expanded open\"",
+                "     .Xsymmetry \"magnetic\"",
+                "     .Ysymmetry \"none\"",
+                "     .Zsymmetry \"none\"",
+                "     .ApplyInAllDirections \"False\"",
+                "     .OpenAddSpaceFactor \"0.5\"",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define time domain solver parameters",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "Mesh.SetCreator \"High Frequency\" ",
+                "",
+                "With Solver ",
+                "     .Method \"Hexahedral\"",
+                "     .StimulationPort \"All\"",
+                "     .StimulationMode \"All\"",
+                "     .SteadyStateLimit \"-40\"",
+                "     .MeshAdaption \"False\"",
+                "     .AutoNormImpedance \"True\"",
+                "     .NormingImpedance \"50\"",
+                "     .CalculateModesOnly \"False\"",
+                "     .SParaSymmetry \"False\"",
+                "     .StoreTDResultsInCache  \"False\"",
+                "     .RunDiscretizerOnly \"False\"",
+                "     .FullDeembedding \"False\"",
+                "     .SuperimposePLWExcitation \"False\"",
+                "     .UseSensitivityAnalysis \"False\"",
+                "End With"
+            ]
+        },
+        {
+            "caption": "define boundaries",
+            "version": "2026.0|35.0.0|20250829",
+            "hidden": false,
+            "type": "vba",
+            "code": [
+                "With Boundary",
+                "     .Xmin \"expanded open\"",
+                "     .Xmax \"expanded open\"",
+                "     .Ymin \"expanded open\"",
+                "     .Ymax \"expanded open\"",
+                "     .Zmin \"expanded open\"",
+                "     .Zmax \"expanded open\"",
+                "     .Xsymmetry \"electric\"",
+                "     .Ysymmetry \"none\"",
+                "     .Zsymmetry \"none\"",
+                "     .ApplyInAllDirections \"False\"",
+                "     .OpenAddSpaceFactor \"0.5\"",
+                "End With"
+            ]
+        }
+    ]
+}

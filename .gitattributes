@@ -1,0 +1,27 @@
+# Normaliza texto no repositorio, com a quebra de linha nativa na copia local.
+* text=auto
+
+*.py    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+
+# O cmd.exe pode falhar ao interpretar .bat com quebra de linha LF.
+*.bat   text eol=crlf
+
+# O projeto do CST e binario, mesmo nos arquivos que parecem texto: o Git
+# detectava Model.bwc, Model.hid e .sjson como texto e converteria CRLF neles,
+# o que corromperia o projeto.  Marcar explicitamente evita qualquer conversao.
+Dipolo.cst   binary
+Dipolo/**    binary
+*.cst        binary
+*.dib        binary
+*.r0d        binary
+*.cbor       binary
+*.bin        binary
+
+# Saidas do antfdm, caso alguem versione uma peca de referencia.
+*.stl   binary
+*.step  binary
+*.3mf   binary

@@ -1,0 +1,9 @@
+{
+    "parameter sweep": {
+        "options": {
+            "restore parameter values after run": "false",
+            "skip existing combinations": "true"
+        },
+        "version": 1
+    }
+}

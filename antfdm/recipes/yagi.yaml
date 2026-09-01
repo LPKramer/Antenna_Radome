@@ -1,0 +1,93 @@
+# Yagi-Uda de 4 elementos.
+#
+# Mostra o que a composicao por blocos da de graca: a antena inteira escala a
+# partir de F0.  Mude F0 na Parameter List do CST, rode Parametric Update, e
+# todos os comprimentos e espacamentos acompanham -- porque cada um e uma fracao
+# de Lambda, nao um numero.
+#
+# Os elementos parasitas sao fios DESCONECTADOS: o boom e mecanico, nao eletrico.
+# Por isso o radome declara 'boom', sem o qual a peca sairia em 4 pedacos soltos
+# e nada garantiria os espacamentos -- que sao dimensoes calibradas.
+#
+# As fracoes de Lambda sao um ponto de partida classico. O numero final vem do CST.
+
+name: yagi
+f0_mhz: 1300
+
+params:
+  F0:
+    expr: "1300"
+    description: "Frequencia alvo (MHz). Mude aqui e a antena inteira reescala."
+  Lambda:
+    expr: "300000/F0"
+    description: "Comprimento de onda no vacuo (mm)"
+  L_drv:
+    expr: "0.470*Lambda"
+    description: "Elemento alimentado, ponta a ponta (mm)"
+  L_ref:
+    expr: "0.490*Lambda"
+    description: "Refletor: mais longo que o alimentado (mm)"
+  L_dir1:
+    expr: "0.442*Lambda"
+    description: "Diretor 1: mais curto que o alimentado (mm)"
+  L_dir2:
+    expr: "0.438*Lambda"
+    description: "Diretor 2 (mm)"
+  S_ref:
+    expr: "0.200*Lambda"
+    description: "Recuo do refletor atras do alimentado (mm)"
+  S_dir1:
+    expr: "0.200*Lambda"
+    description: "Avanco do diretor 1 (mm)"
+  S_dir2:
+    expr: "0.450*Lambda"
+    description: "Avanco do diretor 2 (mm)"
+  Gap:
+    expr: "3"
+    description: "Abertura no ponto de alimentacao (mm)"
+  Bitola:
+    expr: "3/2"
+    description: "DIAMETRO do cobre nu (mm)"
+  Parede:
+    expr: "1"
+    description: "Espessura de PLA sobre o fio (mm)"
+
+conductor: {bitola: Bitola}
+
+radome:
+  parede: Parede
+  infill: 0.30
+  boom: {axis: x, at: 0, width: 7, margin: 5}
+
+feed:
+  p1: ["0", "-Gap/2", "0"]
+  p2: ["0", "Gap/2", "0"]
+
+wires:
+  - name: drv_sup
+    role: driven
+    start: {x: "0", y: "Gap/2", dir: "90"}
+    blocks: [{type: straight, len: "L_drv/2 - Gap/2"}]
+
+  - name: drv_inf
+    role: driven
+    mirror_of: drv_sup
+    mirror_axis: y
+
+  - name: refletor
+    role: parasitic
+    start: {x: "-S_ref", y: "-L_ref/2", dir: "90"}
+    blocks: [{type: straight, len: "L_ref"}]
+
+  - name: diretor1
+    role: parasitic
+    start: {x: "S_dir1", y: "-L_dir1/2", dir: "90"}
+    blocks: [{type: straight, len: "L_dir1"}]
+
+  - name: diretor2
+    role: parasitic
+    start: {x: "S_dir2", y: "-L_dir2/2", dir: "90"}
+    blocks: [{type: straight, len: "L_dir2"}]
+
+sim: {fmin_mhz: 800, fmax_mhz: 1800, f0_mhz: 1300}
+printer: {bed_x: 220, bed_y: 220, bed_z: 250}

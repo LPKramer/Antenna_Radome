@@ -1,0 +1,71 @@
+{
+   "execution": {
+      "classname": "SMAPowerByEmagHPCFrame",
+      "libname": "SMAPowerByEmagUI"
+   },
+   "inputVariables": [
+      {
+         "name": "Gap",
+         "type": "float",
+         "value": 11.674683719298
+      },
+      {
+         "name": "Ltotal",
+         "type": "float",
+         "value": 107.39286720503
+      },
+      {
+         "name": "Sec_inical",
+         "type": "float",
+         "value": 14.347214445876
+      },
+      {
+         "name": "PernaY",
+         "type": "float",
+         "value": 15.0
+      },
+      {
+         "name": "cordenadaNosolda",
+         "type": "float",
+         "value": 13.853290867827
+      },
+      {
+         "name": "Bitola",
+         "type": "string",
+         "value": "3/2"
+      },
+      {
+         "name": "Ang",
+         "type": "float",
+         "value": 1.0528638583449
+      },
+      {
+         "name": "AnguloYperna",
+         "type": "float",
+         "value": 45.0
+      },
+      {
+         "name": "cordenadaNosoldaY",
+         "type": "float",
+         "value": 10.421308395474
+      },
+      {
+         "name": "Radius",
+         "type": "float",
+         "value": 3.0
+      },
+      {
+         "name": "Pla",
+         "type": "float",
+         "value": 1.0
+      }
+   ],
+   "outputVariables": [
+      {
+         "len": 1,
+         "name": "3D\\S1,1_0D_xBandwidthAtY",
+         "type": "float",
+         "value": 76.0620790695275
+      }
+   ]
+}

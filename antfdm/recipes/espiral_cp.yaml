@@ -1,0 +1,55 @@
+# Espiral arquimediana de dois bracos: polarizacao circular em geometria plana.
+#
+# Um dos "fios curvados para polarizacao circular": a espiral irradia CP de forma
+# banda larga sem precisar de linha de atraso de 90 graus nem de segundo
+# alimentador -- o que um dipolo cruzado exigiria.
+#
+# Cada vertice sai como expressao em R0 e R1, entao os dois raios continuam
+# calibraveis no CST mesmo a espiral sendo uma polilinha.
+# 'turns' e 'per_turn' sao literais: mudam quantos vertices existem, ou seja,
+# mudam a topologia.
+
+name: espiral_cp
+f0_mhz: 1300
+
+params:
+  F0:
+    expr: "1300"
+    description: "Frequencia central (MHz)"
+  Lambda:
+    expr: "300000/F0"
+    description: "Comprimento de onda no vacuo (mm)"
+  R0:
+    expr: "3"
+    description: "Raio interno; define o limite superior de frequencia (mm)"
+  R1:
+    expr: "0.16*Lambda"
+    description: "Raio externo; define o limite inferior de frequencia (mm)"
+  Bitola:
+    expr: "3/2"
+    description: "DIAMETRO do cobre nu (mm)"
+  Parede:
+    expr: "1"
+    description: "Espessura de PLA sobre o fio (mm)"
+
+conductor: {bitola: Bitola}
+radome: {parede: Parede, infill: 0.30, boom: {axis: y, at: 0, width: 5, margin: 3}}
+
+feed:
+  p1: ["-R0", "0", "0"]
+  p2: ["R0", "0", "0"]
+
+wires:
+  - name: braco_a
+    role: driven
+    start: {x: "0", y: "0", dir: "0"}
+    blocks:
+      - {type: spiral, turns: 2.5, r0: R0, r1: R1, per_turn: 28, start_angle: 0}
+
+  - name: braco_b
+    role: driven
+    start: {x: "0", y: "0", dir: "0"}
+    blocks:
+      - {type: spiral, turns: 2.5, r0: R0, r1: R1, per_turn: 28, start_angle: 180}
+
+sim: {fmin_mhz: 800, fmax_mhz: 3000, f0_mhz: 1300}

@@ -1,0 +1,72 @@
+# O MESMO dipolo de dipolo_y.yaml, montado com bloquinhos em vez de vertices.
+#
+# Existe para provar que as duas formas produzem geometria identica -- e o que
+# garante que os blocos sao acucar sintatico sobre a linha de centro, e nao um
+# caminho paralelo com regras proprias. Ver test_blocks.py.
+#
+# Nota sobre 'run': o modelo original mistura coordenada absoluta com coordenada
+# relativa ao gap. O pico do Y esta em 'cordenadaNosoldaX' (absoluto), mas a
+# cadeia parte de Gap/2, entao o avanco ate o pico e 'cordenadaNosolda - Gap/2'.
+# Escrito em bloco, esse deslocamento fica explicito em vez de escondido.
+
+name: dipolo_y_blocos
+f0_mhz: 1300
+
+params:
+  Gap:
+    expr: "11.599283958933"
+    description: "Abertura entre os dois bracos, no ponto de alimentacao (mm)"
+  Ltotal:
+    expr: "107.44701481255"
+    description: "Comprimento total ponta a ponta (mm)"
+  Sec_inical:
+    expr: "14.456461165674"
+    description: "Trecho reto entre a alimentacao e o inicio da perna em Y (mm)"
+  cordenadaNosolda:
+    expr: "14.035384448803"
+    description: "Avanco em X do no de solda em relacao a Sec_inical (mm)"
+  cordenadaNosoldaX:
+    expr: "Sec_inical + cordenadaNosolda"
+    description: "Coordenada X do no de solda (mm)"
+  cordenadaNosoldaY:
+    expr: "10.433666976226"
+    description: "Altura do no de solda (mm)"
+  Ang:
+    expr: "1.0690533950457"
+    description: "Angulo auxiliar da perna em Y (rad)"
+  Cotg:
+    expr: "(tan(Ang/(2*pi)))**-1"
+    description: "Cotangente de Ang; avanco em X da descida da perna (mm)"
+  Radius:
+    expr: "3"
+    description: "Raio de filete dos cantos (mm)"
+  Bitola:
+    expr: "3/2"
+    description: "DIAMETRO do cobre nu do fio esmaltado (mm)"
+  Parede:
+    expr: "1"
+    description: "Espessura de PLA sobre o fio (mm)"
+
+conductor: {bitola: Bitola}
+radome: {parede: Parede, infill: 0.30}
+
+feed:
+  p1: ["-Gap/2", "0", "0"]
+  p2: ["Gap/2", "0", "0"]
+
+wires:
+  - name: braco_dir
+    role: driven
+    start: {x: "Gap/2", y: "0", dir: "0"}
+    blocks:
+      - {type: straight, len: "Sec_inical", fillet: Radius}
+      - {type: vee, run: "cordenadaNosolda - Gap/2", height: cordenadaNosoldaY,
+         back: Cotg, fillet: Radius}
+      - {type: straight, len: "Ltotal/2 - cordenadaNosoldaX - Cotg"}
+
+  - name: braco_esq
+    role: driven
+    mirror_of: braco_dir
+    mirror_axis: x
+
+sim: {fmin_mhz: 500, fmax_mhz: 2500, f0_mhz: 1300}

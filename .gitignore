@@ -1,0 +1,35 @@
+# Ambiente virtual (820 MB, reconstruivel com: pip install -e .[gui,dev])
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Saidas geradas pelo antfdm (STL, STEP, macro VBA, print card)
+saida/
+saida_*/
+*.stl
+*.step
+*.3mf
+
+# CST: caches, temporarios e resultados sao regeneraveis e mudam a cada
+# simulacao.  O que fica versionado e Dipolo.cst + Dipolo/Model/, que contem
+# Parameters.json e ModelHistory.json -- os arquivos que os testes usam como
+# referencia de regressao.
+Dipolo/Temp/
+Dipolo/ModelCache/
+Dipolo/Result/
+Dipolo/Export/
+Dipolo/SP/
+*.lok
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

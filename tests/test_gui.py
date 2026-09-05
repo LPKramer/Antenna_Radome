@@ -36,6 +36,12 @@ def win(app):
     w.close()
 
 
+def spec_mod_blank():
+    from antfdm.core import spec as sm
+
+    return sm.AntennaSpec.blank("t", 868.0)
+
+
 def _linha(win, nome: str) -> int:
     return next(
         r for r in range(win.params.rowCount()) if win.params.item(r, 0).text() == nome
@@ -50,10 +56,11 @@ def _set_param(app, win, nome: str, expr: str) -> None:
 def test_abre_a_receita_e_desenha(win, app):
     assert win._spec is not None
     assert win._ws is not None
-    assert win._aviso.text() == ""
     assert win.params.rowCount() == 12
     assert win.wires.topLevelItemCount() == 2
     assert len(win.canvas.scene().items()) > 0
+    # O rodape agora fala de antena, nao de erro.
+    assert "lambda" in win._medida.text()
 
 
 def test_editar_parametro_recalcula_a_geometria(win, app):
@@ -70,7 +77,7 @@ def test_expressao_invalida_vira_aviso_e_nao_derruba(win, app):
     # e se recupera quando o valor volta a ser valido
     _set_param(app, win, "Ltotal", "107.44701481255")
     assert win._ws is not None
-    assert win._aviso.text() == ""
+    assert "naoexiste" not in win._aviso.text()
 
 
 def test_geometria_impossivel_e_reportada_com_numeros(win, app):
@@ -225,14 +232,18 @@ def test_nao_da_para_misturar_blocos_num_fio_de_vertices(win, app):
 # --------------------------------------------------------------------------
 
 
-def test_gui_abre_com_antena_valida_sem_arquivo(app):
-    """Sem argumento a janela nao pode abrir vazia: tela em branco nao ensina nada."""
+def test_gui_abre_vazia_convidando_a_clicar(app):
+    """Sem arquivo, a tela abre limpa e diz o que fazer.
+
+    Antes abria com um dipolo pronto. Com o desenho por cliques isso atrapalha:
+    o primeiro clique deve criar a antena, nao editar uma que ja veio.
+    """
     w = MainWindow()
     try:
         assert w._spec is not None
-        assert w._ws is not None
-        assert w._ws.validate() == []
-        assert w._ws.total_wire_length() > 0
+        assert w._spec.wires == []
+        assert w._ws is None
+        assert "clique" in w.status.currentMessage()
     finally:
         w.close()
 
@@ -313,6 +324,7 @@ def test_parametro_em_uso_nao_pode_ser_removido(app):
     """Remover um parametro que a geometria usa quebraria a antena em silencio."""
     w = MainWindow()
     try:
+        w.nova(spec_mod_blank())
         linha = next(
             r for r in range(w.params.rowCount())
             if w.params.item(r, 0).text() == "L_braco"

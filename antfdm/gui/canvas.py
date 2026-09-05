@@ -36,10 +36,21 @@ class Palette:
     texto = QtGui.QColor("#c8ccd4")
 
 
+# Movimento em pixels acima do qual o gesto vira arrasto em vez de clique.
+LIMIAR_ARRASTO = 4
+
+
 class AntennaCanvas(QtWidgets.QGraphicsView):
-    """Vista 2D da antena, com pan, zoom e selecao de vertice."""
+    """Vista 2D da antena. O gesto decide a acao; nao ha botao de modo.
+
+    clique em vazio -> poe ponto | arrastar vazio -> move a vista
+    arrastar ponto  -> move o ponto | Esc / duplo clique -> termina o fio
+    """
 
     vertexPicked = QtCore.Signal(str, int)  # nome do fio, indice do vertice
+    pontoClicado = QtCore.Signal(float, float, bool)  # x, y (mm), livre (Alt)
+    pontoArrastado = QtCore.Signal(str, int, float, float)  # fio, indice, x, y
+    fioTerminado = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,6 +71,12 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
         # Enquadrar pelos itens incluiria a grade, que e bem maior que a antena
         # e deixaria a peca minuscula na tela.  Guarda so o retangulo da antena.
         self._content = QtCore.QRectF()
+        self._lambda_mm: float | None = None
+        self._press: QtCore.QPoint | None = None
+        self._arrastando: tuple[str, int] | None = None
+        self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.setMouseTracking(True)
 
     # ------------------------------------------------------------------
     def set_wireset(self, ws: WireSet | None, keep_view: bool = True) -> str | None:
@@ -88,6 +105,11 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
 
     def set_show_vertices(self, on: bool) -> None:
         self._show_vertices = on
+        self._rebuild()
+
+    def set_lambda(self, lam: float | None) -> None:
+        """Comprimento de onda, para a regua e a leitura em fracao de lambda."""
+        self._lambda_mm = lam
         self._rebuild()
 
     # ------------------------------------------------------------------
@@ -150,8 +172,26 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
                     self._picks.append((name, i, v[:2]))
 
         self._draw_feed(ws)
+        self._draw_regua()
         self._scene.setSceneRect(self._scene.itemsBoundingRect())
         return erro
+
+    def _draw_regua(self) -> None:
+        """Barra de meia onda: da a escala sem obrigar a calcular nada."""
+        if not self._lambda_mm:
+            return
+        meia = self._lambda_mm / 2.0
+        y = self._content.bottom() + max(self._content.height() * 0.35, 8.0)
+        pen = QtGui.QPen(QtGui.QColor(140, 150, 165, 200))
+        pen.setCosmetic(True)
+        for x in (-meia / 2, meia / 2):
+            self._scene.addLine(x, y - 2, x, y + 2, pen).setZValue(-50)
+        self._scene.addLine(-meia / 2, y, meia / 2, y, pen).setZValue(-50)
+        texto = self._scene.addSimpleText(f"lambda/2 = {meia:.0f} mm")
+        texto.setBrush(QtGui.QBrush(QtGui.QColor(140, 150, 165)))
+        texto.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+        texto.setPos(-meia / 2, y)
+        texto.setZValue(-50)
 
     def _stroke(self, path, color, width, cap, dashed=False, outline=False):
         pen = QtGui.QPen(color)
@@ -227,19 +267,68 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
         f = 1.0015 ** event.angleDelta().y()
         self.scale(f, f)
 
-    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
-        p = self.mapToScene(event.position().toPoint())
-        alvo = np.array([p.x(), p.y()])
+    def _mundo(self, pos) -> tuple[float, float]:
+        p = self.mapToScene(pos)
+        return p.x(), p.y()
+
+    def _alca_em(self, pos) -> tuple[str, int] | None:
+        """Vertice sob o cursor, se houver. Tolerancia constante em pixels."""
+        x, y = self._mundo(pos)
+        alvo = np.array([x, y])
+        tol = 12.0 / max(abs(self.transform().m11()), 1e-6)
         melhor, dist = None, float("inf")
-        for name, i, v in self._picks:
+        for nome, i, v in self._picks:
             d = float(np.linalg.norm(v - alvo))
             if d < dist:
-                melhor, dist = (name, i), d
-        # Tolerancia em pixels, convertida para o mundo, para o clique ter a
-        # mesma sensibilidade em qualquer zoom.
-        tol = 12.0 / max(abs(self.transform().m11()), 1e-6)
-        if melhor and dist <= tol:
-            self.vertexPicked.emit(*melhor)
+                melhor, dist = (nome, i), d
+        return melhor if melhor and dist <= tol else None
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() != QtCore.Qt.LeftButton:
+            return super().mousePressEvent(event)
+        self._press = event.position().toPoint()
+        self._arrastando = self._alca_em(self._press)
+        # Sem alca sob o cursor o arrasto move a vista; com alca, move o ponto.
+        self.setDragMode(
+            QtWidgets.QGraphicsView.NoDrag
+            if self._arrastando
+            else QtWidgets.QGraphicsView.ScrollHandDrag
+        )
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._arrastando and self._press is not None:
+            return  # o ponto so se move ao soltar, para nao recalcular a cada pixel
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        super().mouseReleaseEvent(event)
+        if event.button() != QtCore.Qt.LeftButton or self._press is None:
+            return
+        movimento = (event.position().toPoint() - self._press).manhattanLength()
+        alca, self._arrastando, self._press = self._arrastando, None, None
+        self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
+
+        x, y = self._mundo(event.position().toPoint())
+        if alca is not None:
+            if movimento > LIMIAR_ARRASTO:
+                self.pontoArrastado.emit(alca[0], alca[1], x, y)
+            else:
+                self.vertexPicked.emit(*alca)
+            return
+        if movimento <= LIMIAR_ARRASTO:
+            livre = bool(event.modifiers() & QtCore.Qt.AltModifier)
+            self.pontoClicado.emit(x, y, livre)
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        if event.key() == QtCore.Qt.Key_Escape:
+            self.fioTerminado.emit()
+            return
+        super().keyPressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        self._press = None
+        self.fioTerminado.emit()
         super().mouseDoubleClickEvent(event)
 
 

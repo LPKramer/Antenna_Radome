@@ -119,6 +119,35 @@ def cmd_print(args) -> int:
     return 0
 
 
+def cmd_check(args) -> int:
+    """Avisos sobre a antena, em linguagem de antena."""
+    from .check import rules
+
+    s, ws = _load(args.spec)
+    avisos = rules.verificar(ws, (s.printer.bed_x, s.printer.bed_y, s.printer.bed_z))
+    if not avisos:
+        print("tudo dentro da faixa")
+        return 0
+
+    for a in avisos:
+        print(a)
+        if a.correcao and args.fix:
+            ok, msg = rules.aplicar(s, a.correcao)
+            print(f"     -> {'aplicado: ' if ok else 'nao deu: '}{msg}")
+        elif a.correcao:
+            print(f"     -> sugestao: {a.correcao.descricao}  (use --fix para aplicar)")
+
+    if args.fix:
+        spec_mod.dump(s, args.spec)
+        print(f"\ngravado: {args.spec}")
+        restantes = rules.verificar(s.to_wireset())
+        print(f"restam {len([x for x in restantes if x.severidade != 'dica'])} aviso(s)")
+        return 0
+
+    graves = [a for a in avisos if a.severidade in ("erro", "aviso")]
+    return 1 if graves else 0
+
+
 def cmd_new(args) -> int:
     """Cria um spec novo, em branco ou copiado de uma receita do catalogo."""
     destino = Path(args.out or f"{args.nome}.yaml")
@@ -216,6 +245,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", help="arquivo de saida (padrao <nome>.yaml)")
     p.add_argument("--force", action="store_true", help="sobrescreve se ja existir")
     p.set_defaults(func=cmd_new)
+
+    p = sub.add_parser("check", help="avisa o que esta fora da faixa tipica")
+    p.add_argument("spec")
+    p.add_argument("--fix", action="store_true",
+                   help="aplica as correcoes sugeridas e grava o spec")
+    p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("gui", help="abre o editor grafico")
     p.add_argument("spec", nargs="?", help="spec a abrir (opcional)")

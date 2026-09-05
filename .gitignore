@@ -27,6 +27,8 @@ Dipolo/Result/
 Dipolo/Export/
 Dipolo/SP/
 *.lok
+# Autosaves do CST: aparecem e somem sozinhos a cada salvamento.
+*_as
 
 # Editores / SO
 .vscode/

@@ -39,49 +39,87 @@ antfdm sync  antfdm/recipes/dipolo_y.yaml --cst Dipolo.cst --dry-run
 antfdm print antfdm/recipes/dipolo_y.yaml --out saida
 ```
 
-## Editor gráfico
+## Editor gráfico: clicar põe ponto
 
-`antfdm gui` (ou `gui.bat`, que aceita um `.yaml` arrastado em cima) — canvas em
-escala real com a antena e o radome, Parameter List editável, árvore de fios com
-seus blocos ou vértices, painel de propriedades do item selecionado, e a paleta
-de bloquinhos à direita. Qualquer edição recalcula a geometria na hora; expressão
-inválida vira aviso na barra de status, não travamento. Duplo clique num vértice
-do canvas seleciona a linha correspondente na árvore. Botão direito num bloco
-move ou remove. Botões para gerar CST, gerar STL e trazer os parâmetros do CST.
-
-A paleta e o painel de propriedades leem o registro de blocos, então um bloco novo
-em `blocks/library.py` aparece na interface sem nenhum código de GUI.
-
-O radome é desenhado traçando a linha de centro com uma caneta da espessura da
-peça — o traçado do Qt *é* a varredura do perfil, então o desenho sai correto
-inclusive nos filetes, onde um offset ingênuo erraria.
-
-A GUI edita o mesmo `AntennaSpec` que o CLI consome e salva o mesmo YAML. Nada
-do que se faz nela fica preso à interface — garantido por
-`test_gui_e_cli_produzem_o_mesmo_spec`.
-
-## Construir uma antena do zero
-
-```bash
-antfdm new minha_antena --freq 868          # dipolo de meia onda, editavel
-antfdm new minha_yagi --de yagi             # copia uma receita do catalogo
-antfdm gui minha_antena.yaml
+```
+┌──────────────────────────────────────────────────────────────┐
+│  868 MHz    Nova  Abrir  Salvar    Gerar CST  Gerar STL   ⚙  │
+├──────────────────────────────────────────────────────────────┤
+│                    ●───────────╪───────────●                 │
+│                    │←──────  λ/2  ──────→│                   │
+├──────────────────────────────────────────────────────────────┤
+│  fio 166 mm · 0.48 λ            tudo dentro da faixa         │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-Ou na GUI, botao **Nova**. Nunca comeca em branco: um dipolo de meia onda ja
-desenhado, porque tela vazia nao diz o que fazer.
+**Um clique já dá um dipolo** — braço, espelho e alimentação nascem juntos, na
+frequência da barra. Não existe botão de modo; o gesto decide:
 
-Depois, na janela:
-
-| Passo | Onde |
+| Gesto | O que faz |
 |---|---|
-| 1. Ajustar frequencia e comprimentos | tabela **Parametros** (`+` / `−` cria e remove) |
-| 2. Dobrar, serpentear, curvar | selecione um fio, use a paleta **Bloquinhos** |
-| 3. Refletor, diretor, segundo braco | botao **+ Fio** |
-| 4. Mover a porta | botao **Alimentacao** |
-| 5. Levar ao CST, calibrar, voltar | **Gerar CST** → **Sync do CST** → **Gerar STL** |
+| clique em espaço vazio | põe um ponto do fio |
+| arrastar espaço vazio | move a vista |
+| arrastar um ponto | move aquele ponto |
+| Esc ou duplo clique | termina o fio; o próximo clique começa outro |
+| Ctrl+Z / Ctrl+Y | desfaz / refaz |
+| Alt + clique | desliga o encaixe de 15° e 0.5 mm |
 
-Tudo e fracao de `Lambda`, entao mudar `F0` reescala a antena inteira.
+Fios seguintes nascem parasitas (refletor, diretor) e levam dois cliques: um
+marca de onde saem, outro onde terminam.
+
+**Cada traço cria seu parâmetro em silêncio** (`L1`, `A1`, …) com descrição.
+Você nunca digita um nome, mas o CST recebe a Parameter List populada — que é a
+razão de existir do projeto. Arrastar um ponto edita *o parâmetro*, preservando
+a forma da expressão.
+
+O rodapé responde "vai funcionar?" em uma linha, sem jargão: *tudo dentro da
+faixa*, ou `o braço está 30% longo demais para 868 MHz` com um botão **corrigir**.
+
+Sete controles na tela. Parâmetros, blocos, propriedades e paleta continuam
+existindo atrás do **Avançado** (Ctrl+E) — nada foi apagado, só saiu da frente.
+Há um teste que falha se a tela padrão passar de 8 controles.
+
+## Avisos (`antfdm check`)
+
+```
+$ antfdm check minha_antena.yaml
+!! o elemento alimentado esta 64% longo demais para 868 MHz (248.8 mm; o esperado e ~151.3 mm)
+     -> sugestao: ajustar para 75.7 mm por braco  (use --fix para aplicar)
+ ! a peca ficaria com 257 x 4 mm e nao cabe na mesa de 220 x 220 mm
+```
+
+Faixas clássicas, não verdade: o número final vem do CST. Por isso as
+tolerâncias são largas — aviso que dispara sempre vira ruído.
+
+Elemento **dobrado** (serpentina, espiral) dispensa a conferência por meia onda:
+comparar comprimento de fio com λ/2 acusaria "525% longo demais" numa espiral
+correta. O quociente fio/vão separa os casos (reto ~1.0, serpentina 1.5,
+espiral 6.3).
+
+### No Avançado (Ctrl+E)
+
+Parâmetros, árvore de fios/blocos, propriedades do item e paleta de bloquinhos —
+tudo que a tela mostrava antes. A paleta lê o registro de blocos, então um bloco
+novo em `blocks/library.py` aparece sem código de GUI.
+
+O radome é desenhado traçando a linha de centro com uma caneta da espessura da
+peça — o traçado do Qt *é* a varredura do perfil, então sai correto inclusive nos
+filetes, onde um offset ingênuo erraria.
+
+A GUI edita o mesmo `AntennaSpec` que o CLI consome e salva o mesmo YAML. Nada
+fica preso à interface — garantido por `test_gui_e_cli_produzem_o_mesmo_spec`.
+
+## Pela linha de comando
+
+```bash
+antfdm new minha_antena --freq 868     # dipolo de meia onda, já dimensionado
+antfdm new minha_yagi --de yagi        # copia uma receita do catálogo
+antfdm check minha_antena.yaml --fix   # avisa e corrige
+```
+
+`antfdm new` produz uma antena pronta (a GUI começa vazia, para o primeiro
+clique criar a antena em vez de editar uma que já veio). Tudo é fração de
+`Lambda`, então mudar `F0` reescala o conjunto.
 
 ## Bloquinhos
 
@@ -167,7 +205,7 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 
 ## Estado
 
-**Fases 1, 3, 5 e parte da 2 implementadas.** 94 testes passando.
+**Fases 1, 3, 5 e parte da 2 implementadas.** 159 testes passando.
 
 | Módulo | Estado |
 |---|---|
@@ -175,7 +213,9 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 | `cst/vba.py` — emissor VBA paramétrico | pronto |
 | `cad/` — sweep, clamshell, export | pronto |
 | `io/cst_params_in.py` + `antfdm sync` | pronto |
-| `gui/` — editor PySide6 com paleta de blocos | pronto |
+| `gui/` — editor PySide6, desenho por cliques, undo | pronto |
+| `check/rules.py` + `antfdm check` — avisos com correção | pronto |
+| `core/solve.py` — arrastar edita o parâmetro | pronto |
 | `blocks/` — cursor simbólico, 8 blocos, registro | pronto |
 | `recipes/` — dipolo, Yagi, meander, espiral CP | pronto |
 | `cst/driver.py` — rodar solver e ler S11 pela API | pendente (Fase 2) |

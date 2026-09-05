@@ -251,6 +251,51 @@ class AntennaSpec(_Model):
 
     # ------------------------------------------------------------------
     @classmethod
+    def empty(cls, name: str = "nova_antena", f0_mhz: float = 1300.0) -> "AntennaSpec":
+        """So os parametros basicos, sem nenhum fio -- para desenhar clicando.
+
+        A alimentacao tambem fica de fora: ela nasce junto com o primeiro braco,
+        porque so ai se sabe se a antena e horizontal ou vertical.
+        """
+        return cls.model_validate(
+            {
+                "name": name,
+                "f0_mhz": f0_mhz,
+                "params": {
+                    "F0": {
+                        "expr": f"{f0_mhz:g}",
+                        "description": "Frequencia alvo (MHz). Mude e a antena reescala.",
+                    },
+                    "Lambda": {
+                        "expr": "300000/F0",
+                        "description": "Comprimento de onda no vacuo (mm)",
+                    },
+                    "Gap": {
+                        "expr": "4",
+                        "description": "Abertura no ponto de alimentacao (mm)",
+                    },
+                    "Radius": {
+                        "expr": "2",
+                        "description": "Raio de dobra dos cantos (mm)",
+                    },
+                    "Bitola": {
+                        "expr": "1.5",
+                        "description": "DIAMETRO do cobre nu do fio esmaltado (mm)",
+                    },
+                    "Parede": {
+                        "expr": "1",
+                        "description": "Espessura de PLA sobre o fio (mm)",
+                    },
+                },
+                "sim": {
+                    "fmin_mhz": round(f0_mhz * 0.4),
+                    "fmax_mhz": round(f0_mhz * 2.0),
+                    "f0_mhz": f0_mhz,
+                },
+            }
+        )
+
+    @classmethod
     def blank(cls, name: str = "nova_antena", f0_mhz: float = 1300.0) -> "AntennaSpec":
         """Um dipolo de meia onda pronto para editar.
 

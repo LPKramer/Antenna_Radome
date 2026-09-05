@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cad.clamshell import Clamshell, _fingerprint
+from .cad.clamshell import Clamshell
 from .core.wireset import WireSet
 
 
@@ -33,7 +33,6 @@ def build(ws: WireSet, clam: Clamshell | None = None) -> PrintCard:
 
     a("=" * 68)
     a(f"  {ws.name}" + (f"   f0 = {ws.f0_hz / 1e6:.1f} MHz" if ws.f0_hz else ""))
-    a(f"  parametros: {_fingerprint(ws)}")
     a("=" * 68)
     a("")
     a("FIO A CORTAR")
@@ -61,19 +60,19 @@ def build(ws: WireSet, clam: Clamshell | None = None) -> PrintCard:
         a(f"  secao do corpo  : {clam.section_w:.2f} x {clam.section_h:.2f} mm")
         a(f"  raio do canal   : {clam.channel_r:.3f} mm "
           f"(folga radial {ws.radome.folga:.2f} mm sobre o fio)")
-        a(f"  orelhas         : {clam.stats.get('orelhas', 0)}")
-        a(f"  pinos / parafusos: {clam.stats.get('pinos', 0)} / "
-          f"{clam.stats.get('parafusos', 0)} ({ws.radome.parafuso})")
+        a(f"  parafusos       : {clam.stats.get('parafusos', 0)} ({ws.radome.parafuso})")
+        if clam.stats.get("ligacoes"):
+            a(f"  ligacoes        : {clam.stats['ligacoes']} "
+              "(barras que unem elementos desconectados numa peca so)")
         a(f"  volume base/topo: {clam.stats.get('volume_base_mm3', 0):.0f} / "
           f"{clam.stats.get('volume_topo_mm3', 0):.0f} mm3")
         a("")
 
     a("MONTAGEM")
     a("  1. Assente o fio no canal da metade de baixo, seguindo o filete dos cantos.")
-    a("  2. A ponte central fixa o Gap de alimentacao -- nao force o espacamento.")
-    a("  3. Solde o cabo no alojamento da ponte, com a malha do lado indicado.")
-    a("  4. Feche com a metade de cima; os pinos alinham antes de apertar.")
-    a(f"  5. Aperte os parafusos {ws.radome.parafuso}.")
+    a("  2. Solde o cabo no ponto de alimentacao, pela lateral da peca.")
+    a("  3. Feche com a metade de cima e aperte os parafusos "
+      f"{ws.radome.parafuso}.")
     a("")
     a("CALIBRACAO")
     a("  As dimensoes finais vem do CST. Depois de calibrar la, rode:")

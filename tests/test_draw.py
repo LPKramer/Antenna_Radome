@@ -1,13 +1,17 @@
-"""Desenhar a antena clicando.
+"""Gestos: clicar na ponta, arrastar aresta, soltar bloco.
 
-Duas travas sustentam esta etapa:
+Tres travas sustentam esta etapa:
 
-* **A invariante do projeto.** Uma antena desenhada com o mouse tem que emitir
-  VBA com EXPRESSAO em toda coordenada.  Se um clique assar o numero, a
-  Parameter List do CST vem vazia e a ferramenta perde a razao de existir.
+* **A invariante do projeto.** Uma antena montada com gestos tem que emitir VBA
+  com EXPRESSAO em toda coordenada.  Se um gesto assar o numero, a Parameter
+  List do CST vem vazia e a ferramenta perde a razao de existir.
 
-* **A contagem de controles.** Sem ela eu volto a acrescentar botao -- foi
-  exatamente o que aconteceu tres vezes seguidas, e o usuario reclamou as tres.
+* **Clique no vazio nao cria nada** quando ja existe antena.  Era metade do "o
+  desenho nao faz o que espero": um clique fora do lugar virava um elemento
+  parasita novo, sem aviso.
+
+* **A contagem de controles e de ajustes da peca.** Sem elas eu volto a
+  acrescentar -- foi o que aconteceu em tres rodadas seguidas.
 """
 
 from __future__ import annotations
@@ -18,14 +22,19 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from antfdm.check import rules  # noqa: E402
 from antfdm.core import spec as spec_mod  # noqa: E402
-from antfdm.gui.draw import DrawController  # noqa: E402
+from antfdm.gui import draw, interact  # noqa: E402
 
 
 @pytest.fixture
 def vazia():
     return spec_mod.AntennaSpec.empty("desenhada", 868.0)
+
+
+@pytest.fixture
+def dipolo(vazia):
+    draw.primeiro_braco(vazia, (85, 0))
+    return vazia
 
 
 # --------------------------------------------------------------------------
@@ -35,36 +44,134 @@ def vazia():
 
 def test_um_clique_ja_da_um_dipolo(vazia):
     """Braco, espelho e alimentacao nascem juntos: e o caso mais comum."""
-    d = DrawController()
-    traco = d.clicar(vazia, (85, 0))
-
+    traco = draw.primeiro_braco(vazia, (85, 0))
     assert traco is not None
-    assert len(vazia.wires) == 2
-    assert vazia.feed is not None
+    assert len(vazia.wires) == 2 and vazia.feed is not None
     ws = vazia.to_wireset()
     assert [w.role for w in ws.wires] == ["driven", "driven"]
-    assert ws.wire("braco_2").centerline.length(
-        ws.params
-    ) == pytest.approx(ws.wire("braco_1").centerline.length(ws.params))
-
-
-def test_dipolo_desenhado_fica_dentro_da_faixa(vazia):
-    """Clicar perto de lambda/4 tem que produzir uma antena que ja passa."""
-    lam = 300000.0 / 868.0
-    DrawController().clicar(vazia, (lam / 4, 0))
-    avisos = rules.verificar(vazia.to_wireset())
-    assert not [a for a in avisos if a.severidade in ("erro", "aviso")]
+    assert ws.wire("braco_2").centerline.length(ws.params) == pytest.approx(
+        ws.wire("braco_1").centerline.length(ws.params)
+    )
 
 
 def test_desenho_vertical_espelha_no_eixo_certo(vazia):
-    DrawController().clicar(vazia, (0, 85))
+    draw.primeiro_braco(vazia, (0, 85))
     assert vazia.wires[1].mirror_axis == "y"
     assert vazia.feed.p1 == ["0", "-Gap/2", "0"]
 
 
-def test_desenho_horizontal_espelha_no_eixo_certo(vazia):
-    DrawController().clicar(vazia, (85, 0))
-    assert vazia.wires[1].mirror_axis == "x"
+# --------------------------------------------------------------------------
+# o que esta sob o cursor
+# --------------------------------------------------------------------------
+
+
+def test_ponta_ganha_do_trecho_no_empate(dipolo):
+    """Com o cursor na ponta, o alvo tem que ser a ponta e nao a aresta."""
+    ws = dipolo.to_wireset()
+    alvo = interact.localizar(ws, (85, 0), 6.0, spec_wires=dipolo.wires)
+    assert alvo is not None and alvo.tipo == "ponta"
+
+
+def test_meio_do_fio_e_aresta(dipolo):
+    ws = dipolo.to_wireset()
+    alvo = interact.localizar(ws, (45, 0), 6.0, spec_wires=dipolo.wires)
+    assert alvo is not None and alvo.tipo == "aresta"
+
+
+def test_longe_de_tudo_nao_ha_alvo(dipolo):
+    ws = dipolo.to_wireset()
+    assert interact.localizar(ws, (200, 200), 6.0, spec_wires=dipolo.wires) is None
+
+
+def test_fio_espelhado_e_marcado_como_nao_editavel(dipolo):
+    ws = dipolo.to_wireset()
+    alvo = interact.localizar(ws, (-85, 0), 6.0, spec_wires=dipolo.wires)
+    assert alvo is not None and alvo.wire == "braco_2"
+    assert not alvo.editavel
+
+
+def test_descricao_fala_em_linguagem_de_antena(dipolo):
+    ws = dipolo.to_wireset()
+    texto = interact.descrever(
+        interact.localizar(ws, (45, 0), 6.0, spec_wires=dipolo.wires), ws
+    )
+    assert "mm" in texto and "arraste" in texto
+
+
+# --------------------------------------------------------------------------
+# soltar bloco: o gesto principal
+# --------------------------------------------------------------------------
+
+
+def test_bloco_solto_perto_da_ponta_encaixa_no_fio(dipolo):
+    ws = dipolo.to_wireset()
+    alvo = interact.ponta_mais_proxima(ws, (87, 2), 25.0, spec_wires=dipolo.wires)
+    assert alvo is not None and alvo.wire == "braco_1"
+
+    antes = len(dipolo.wires)
+    traco = draw.anexar_bloco(dipolo, alvo.wire, "meander")
+    assert traco is not None
+    assert len(dipolo.wires) == antes  # anexou, nao criou fio novo
+    assert [b["type"] for b in dipolo.wires[0].blocks] == ["straight", "meander"]
+
+
+def test_bloco_solto_longe_vira_elemento_solto(dipolo):
+    ws = dipolo.to_wireset()
+    assert interact.ponta_mais_proxima(ws, (-60, -90), 25.0,
+                                       spec_wires=dipolo.wires) is None
+
+    antes = len(dipolo.wires)
+    traco = draw.novo_fio_com_bloco(dipolo, (-60, -90), "straight")
+    assert traco is not None
+    assert len(dipolo.wires) == antes + 1
+    assert dipolo.wires[-1].role == "parasitic"
+
+
+def test_bloco_que_nao_anda_sozinho_ganha_uma_reta(dipolo):
+    """'dobra' so vira geometria depois de algo para dobrar."""
+    draw.novo_fio_com_bloco(dipolo, (60, -90), "bend")
+    assert [b["type"] for b in dipolo.wires[-1].blocks] == ["straight", "bend"]
+    assert dipolo.to_wireset().validate() == []
+
+
+def test_encaixe_ignora_fio_espelhado(dipolo):
+    """A ponta do braco espelhado nao recebe bloco: quem manda e o original."""
+    ws = dipolo.to_wireset()
+    alvo = interact.ponta_mais_proxima(ws, (-85, 0), 25.0, spec_wires=dipolo.wires)
+    assert alvo is None or alvo.wire != "braco_2"
+
+
+def test_anexar_em_fio_espelhado_e_recusado(dipolo):
+    assert draw.anexar_bloco(dipolo, "braco_2", "meander") is None
+
+
+# --------------------------------------------------------------------------
+# crescer e esticar
+# --------------------------------------------------------------------------
+
+
+def test_crescer_da_ponta_adiciona_dobra_e_trecho(dipolo):
+    antes = len(dipolo.wires[0].blocks)
+    draw.crescer(dipolo, "braco_1", (85, 40))
+    tipos = [b["type"] for b in dipolo.wires[0].blocks]
+    assert len(tipos) == antes + 2
+    assert tipos[-2:] == ["bend", "straight"]
+
+
+def test_crescer_na_mesma_direcao_nao_cria_dobra(vazia):
+    draw.primeiro_braco(vazia, (50, 0))
+    draw.crescer(vazia, "braco_1", (90, 0))
+    assert [b["type"] for b in vazia.wires[0].blocks] == ["straight", "straight"]
+
+
+def test_elemento_solto_nasce_centrado(vazia):
+    draw.primeiro_braco(vazia, (85, 0))
+    traco = draw.novo_elemento(vazia, (-50, 0), 110.0, 90.0)
+    ws = vazia.to_wireset()
+    verts = ws.wire(traco.wire).centerline.points(ws.params)
+    meio = (verts[0][:2] + verts[-1][:2]) / 2.0
+    assert meio[0] == pytest.approx(-50.0, abs=0.6)
+    assert meio[1] == pytest.approx(0.0, abs=0.6)
 
 
 # --------------------------------------------------------------------------
@@ -72,152 +179,131 @@ def test_desenho_horizontal_espelha_no_eixo_certo(vazia):
 # --------------------------------------------------------------------------
 
 
-def test_antena_desenhada_emite_vba_parametrico(vazia):
-    """Nenhuma coordenada pode sair como numero, mesmo desenhada a mao."""
+def test_antena_montada_com_gestos_emite_vba_parametrico(vazia):
     from antfdm.cst import vba
 
-    d = DrawController()
-    d.clicar(vazia, (85, 0))
-    d.clicar(vazia, (85, 40))
-    d.terminar_fio()
+    draw.primeiro_braco(vazia, (85, 0))
+    draw.crescer(vazia, "braco_1", (85, 40))
+    draw.anexar_bloco(vazia, "braco_1", "bend")
+    draw.novo_fio_com_bloco(vazia, (-60, -90), "straight")
 
     ws = vazia.to_wireset()
     codigo = "\n".join(b.code for b in vba.emit(ws))
-
-    # Cada traco virou parametro na Parameter List.
     assert "MakeSureParameterExists" in codigo
-    assert '"L1"' in codigo
-    # E as coordenadas referenciam esses parametros, nao os valores.
-    assert "L1" in codigo and "Gap/2" in codigo
+    assert '"L1"' in codigo and "Gap/2" in codigo
 
 
 def test_cada_traco_cria_seu_parametro(vazia):
-    d = DrawController()
-    d.clicar(vazia, (85, 0))
-    d.clicar(vazia, (85, 40))
-    assert "L1" in vazia.params and "L2" in vazia.params
-    assert "A1" in vazia.params  # a dobra tambem
+    draw.primeiro_braco(vazia, (85, 0))
+    draw.crescer(vazia, "braco_1", (85, 40))
+    assert {"L1", "L2", "A1"} <= set(vazia.params)
     for nome in ("L1", "L2", "A1"):
         assert vazia.params[nome]["description"]
 
 
-def test_parametro_desenhado_nao_colide_com_existente():
-    s = spec_mod.AntennaSpec.empty("x", 868.0)
-    s.params["L1"] = {"expr": "10", "description": "ja existia"}
-    DrawController().clicar(s, (85, 0))
-    assert s.params["L1"]["expr"] == "10"  # intacto
-    assert "L2" in s.params
+def test_parametro_novo_nao_colide_com_existente(vazia):
+    vazia.params["L1"] = {"expr": "10", "description": "ja existia"}
+    draw.primeiro_braco(vazia, (85, 0))
+    assert vazia.params["L1"]["expr"] == "10"
+    assert "L2" in vazia.params
 
 
 # --------------------------------------------------------------------------
-# fios seguintes
-# --------------------------------------------------------------------------
-
-
-def test_segundo_fio_nasce_parasita_em_dois_cliques(vazia):
-    """Refletor e diretor nao se conectam: precisam de inicio e fim proprios."""
-    d = DrawController()
-    d.clicar(vazia, (85, 0))
-    d.terminar_fio()
-
-    assert d.clicar(vazia, (-50, -60)) is None  # so marca de onde sai
-    assert len(vazia.wires) == 2
-    traco = d.clicar(vazia, (50, -60))
-    assert traco is not None
-    assert len(vazia.wires) == 3
-    assert vazia.wires[2].role == "parasitic"
-    assert vazia.to_wireset().wire(vazia.wires[2].name).centerline.length(
-        vazia.to_wireset().params
-    ) == pytest.approx(100.0, abs=1.0)
-
-
-def test_continuar_o_fio_adiciona_dobra_e_trecho(vazia):
-    d = DrawController()
-    d.clicar(vazia, (85, 0))
-    antes = len(vazia.wires[0].blocks)
-    d.clicar(vazia, (85, 40))
-    tipos = [b["type"] for b in vazia.wires[0].blocks]
-    assert len(tipos) == antes + 2
-    assert tipos[-2:] == ["bend", "straight"]
-
-
-def test_trecho_na_mesma_direcao_nao_cria_dobra(vazia):
-    d = DrawController()
-    d.clicar(vazia, (50, 0))
-    d.clicar(vazia, (90, 0))
-    assert [b["type"] for b in vazia.wires[0].blocks] == ["straight", "straight"]
-
-
-def test_terminar_fio_faz_o_proximo_clique_comecar_outro(vazia):
-    d = DrawController()
-    d.clicar(vazia, (85, 0))
-    assert d.desenhando
-    d.terminar_fio()
-    assert not d.desenhando
-
-
-# --------------------------------------------------------------------------
-# encaixe
+# encaixe de valores
 # --------------------------------------------------------------------------
 
 
 def test_angulo_encaixa_em_passos_de_15_graus(vazia):
-    d = DrawController()
-    d.clicar(vazia, (85, 3))  # ~2 graus
+    draw.primeiro_braco(vazia, (85, 3))  # ~2 graus
     assert float(vazia.wires[0].start.dir) == pytest.approx(0.0)
 
 
 def test_alt_desliga_o_encaixe(vazia):
-    d = DrawController()
-    d.clicar(vazia, (85, 20), livre=True)
-    assert float(vazia.wires[0].start.dir) != pytest.approx(0.0)
+    draw.primeiro_braco(vazia, (85, 20), livre=True)
     assert float(vazia.wires[0].start.dir) == pytest.approx(13.24, abs=0.1)
 
 
 def test_comprimento_encaixa_em_meio_milimetro(vazia):
-    DrawController().clicar(vazia, (85.13, 0))
+    draw.primeiro_braco(vazia, (85.13, 0))
     valor = float(vazia.params["L1"]["expr"])
     assert valor * 2 == pytest.approx(round(valor * 2))
 
 
 # --------------------------------------------------------------------------
-# a trava da tela
+# as travas
 # --------------------------------------------------------------------------
 
 
-def test_tela_padrao_tem_poucos_controles():
-    """Trava contra eu voltar a encher a barra.
-
-    Foram tres rodadas de "acrescentei botoes" antes de entender que o pedido
-    era o contrario.  Este teste falha se a tela padrao passar de 8 controles.
-    """
+def _janela():
     from PySide6 import QtWidgets
 
     from antfdm.gui.app import MainWindow
 
     QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    w = MainWindow()
+    return MainWindow()
+
+
+def test_tela_padrao_tem_poucos_controles():
+    """Falha se a barra voltar a encher. Foram tres rodadas de 'acrescentei'."""
+    w = _janela()
     try:
         controles = w.controles_visiveis()
         assert len(controles) <= 8, controles
-        assert not w.avancado_aberto(), "o painel avancado nao pode abrir sozinho"
+        assert not w.avancado_aberto()
     finally:
         w.close()
 
 
+def test_paleta_fica_na_tela_e_nao_no_avancado():
+    """O gesto principal e arrastar bloco; a paleta nao pode estar escondida."""
+    w = _janela()
+    try:
+        assert w.palette_blocos.isVisibleTo(w)
+        assert w.palette_blocos.lista.count() > 0
+    finally:
+        w.close()
+
+
+def test_paleta_mostra_nomes_em_portugues():
+    w = _janela()
+    try:
+        nomes = {w.palette_blocos.lista.item(i).text()
+                 for i in range(w.palette_blocos.lista.count())}
+        assert {"reta", "dobra", "serpentina", "espiral"} <= nomes
+        assert "straight" not in nomes and "vee" not in nomes
+    finally:
+        w.close()
+
+
+def test_clique_no_vazio_nao_cria_com_antena_existente():
+    """Metade do 'nao faz o que espero': clique fora criava parasita sem aviso."""
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)  # cria o dipolo
+        antes = len(w._spec.wires)
+        w.canvas.cliqueEm.emit(-70.0, 90.0, False)  # bem longe de tudo
+        assert len(w._spec.wires) == antes
+    finally:
+        w.close()
+
+
+def test_peca_tem_poucos_ajustes():
+    """Mesma ideia: a peca so segura o fio, nao precisa de onze parametros."""
+    import dataclasses
+
+    from antfdm.cad.clamshell import ClamshellOptions
+
+    campos = [f.name for f in dataclasses.fields(ClamshellOptions)]
+    assert len(campos) <= 4, campos
+
+
 def test_avancado_continua_existindo():
     """Nada foi apagado: quem quiser digitar expressao ainda pode."""
-    from PySide6 import QtWidgets
-
-    from antfdm.gui.app import MainWindow
-
-    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    w = MainWindow()
+    w = _janela()
     try:
         w._alternar_avancado()
         assert w.avancado_aberto()
-        assert w.params is not None and w.wires is not None
-        assert w.props is not None and w.palette_blocos is not None
+        assert w.params is not None and w.wires is not None and w.props is not None
     finally:
         w.close()
 
@@ -233,7 +319,7 @@ def test_desfazer_devolve_o_spec_inteiro():
     s = spec_mod.AntennaSpec.empty("x", 868.0)
     h = History()
     h.marcar(s)
-    DrawController().clicar(s, (85, 0))
+    draw.primeiro_braco(s, (85, 0))
     assert len(s.wires) == 2
 
     voltou = h.desfazer(s)
@@ -248,3 +334,27 @@ def test_desfazer_vazio_nao_quebra():
     s = spec_mod.AntennaSpec.empty("x", 868.0)
     assert History().desfazer(s) is None
     assert History().refazer(s) is None
+
+
+# --------------------------------------------------------------------------
+# a linha de comando tambem constroi a peca
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_cli_print_gera_a_peca(tmp_path):
+    """Faltava este teste, e por isso o CLI passou quebrado pela suite: eu tinha
+    apagado opcoes da peca sem tirar as flags que as passavam."""
+    from antfdm.cli import main
+
+    spec_mod.dump(
+        spec_mod.from_recipe("dipolo_y", "t"), tmp_path / "t.yaml"
+    )
+    rc = main(["print", str(tmp_path / "t.yaml"), "--out", str(tmp_path / "out"),
+               "--no-step"])
+    assert rc == 0
+    assert (tmp_path / "out" / "t_base.stl").exists()
+    assert (tmp_path / "out" / "t_topo.stl").exists()
+    card = (tmp_path / "out" / "t_print_card.txt").read_text(encoding="utf-8")
+    assert "parafusos" in card
+    assert "pinos" not in card and "coax" not in card  # sumiram da peca

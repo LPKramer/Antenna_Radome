@@ -24,7 +24,7 @@ from ..core.spec import AntennaSpec
 from ..core.wireset import WireSet
 from .canvas import AntennaCanvas
 from .dialogs import FeedDialog, NewAntennaDialog, NewParamDialog, NewWireDialog
-from .draw import DrawController
+from . import draw, interact
 from .history import History
 from .inspector import (
     BlockPalette,
@@ -36,7 +36,7 @@ from .inspector import (
 )
 
 DICA_VAZIA = "clique na tela para desenhar o primeiro braco"
-DICA_DESENHANDO = "clique para continuar o fio   ·   Esc termina"
+DICA_VAZIA_COM_ANTENA = "arraste uma ponta para esticar, ou solte um bloco nela"
 
 
 class _Job(QtCore.QRunnable):
@@ -70,19 +70,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pool = QtCore.QThreadPool.globalInstance()
         self._busy = 0
         self._hist = History()
-        self._draw = DrawController()
+        self._alvo = None  # o que esta sob o cursor agora
 
         self.canvas = AntennaCanvas()
-        self.setCentralWidget(self.canvas)
+        self.palette_blocos = BlockPalette()
+        self.palette_blocos.setFixedWidth(150)
+        self.palette_blocos.add_requested.connect(self._add_block)
+
+        centro = QtWidgets.QSplitter()
+        centro.addWidget(self.canvas)
+        centro.addWidget(self.palette_blocos)
+        centro.setStretchFactor(0, 1)
+        centro.setCollapsible(0, False)
+        self.setCentralWidget(centro)
 
         self._build_toolbar()
         self._build_footer()
         self._build_advanced()
 
-        self.canvas.pontoClicado.connect(self._clique)
-        self.canvas.pontoArrastado.connect(self._arrasto)
-        self.canvas.fioTerminado.connect(self._terminar_fio)
-        self.canvas.vertexPicked.connect(self.wires.select_vertex)
+        self.canvas.cliqueEm.connect(self._clique)
+        self.canvas.arrastoAte.connect(self._arrasto)
+        self.canvas.cursorEm.connect(self._hover)
+        self.canvas.escPressionado.connect(self._desmarcar)
+        self.canvas.set_hit_test(self._ha_alvo)
+        self.canvas.set_encaixe(self._encaixe)
+        self.canvas.blocoSolto.connect(self._bloco_solto)
 
         if path:
             self.open(path)
@@ -164,13 +176,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.params = ParamTable()
         self.wires = WireTree()
         self.props = ItemProperties()
-        self.palette_blocos = BlockPalette()
 
         self.params.changed.connect(self._refresh)
         self.wires.changed.connect(self._on_wires_changed)
         self.wires.picked.connect(self._on_picked)
         self.props.changed.connect(self._on_wires_changed)
-        self.palette_blocos.add_requested.connect(self._add_block)
 
         abas = QtWidgets.QTabWidget()
         abas.addTab(_com_botoes(self.params, [
@@ -179,7 +189,6 @@ class MainWindow(QtWidgets.QMainWindow):
         ]), "Parametros")
         abas.addTab(self.wires, "Fios")
         abas.addTab(self.props, "Item")
-        abas.addTab(self.palette_blocos, "Blocos")
 
         extras = QtWidgets.QWidget()
         lay = QtWidgets.QHBoxLayout(extras)
@@ -229,67 +238,188 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
     # desenho
     # ------------------------------------------------------------------
-    def _clique(self, x: float, y: float, livre: bool) -> None:
+    def _localizar(self, x: float, y: float):
+        """Alvo sob (x, y), com tolerancia constante em pixels."""
+        if self._ws is None or self._spec is None:
+            return None
+        return interact.localizar(
+            self._ws, (x, y), self.canvas.tolerancia_mm(), spec_wires=self._spec.wires
+        )
+
+    def _ha_alvo(self, x: float, y: float) -> bool:
+        return self._localizar(x, y) is not None
+
+    def _encaixe(self, x: float, y: float):
+        """Ponta que recebe o bloco arrastado, com o rumo em que ela termina."""
+        if self._ws is None or self._spec is None:
+            return None
+        from .dragdrop import ALCANCE_PX
+
+        alvo = interact.ponta_mais_proxima(
+            self._ws, (x, y), self.canvas.tolerancia_mm(ALCANCE_PX),
+            spec_wires=self._spec.wires,
+        )
+        if alvo is None:
+            return None
+        import numpy as np
+
+        verts = self._ws.wire(alvo.wire).centerline.points(self._ws.params)
+        d = verts[-1][:2] - verts[-2][:2]
+        rumo = float(np.degrees(np.arctan2(d[1], d[0])))
+        return alvo.wire, alvo.ponto, rumo
+
+    def _bloco_solto(self, tipo: str, x: float, y: float) -> None:
+        """Perto de uma ponta, encaixa nela. Longe, vira elemento solto."""
         if self._spec is None:
             return
+        destino = self._encaixe(x, y)
         self._hist.marcar(self._spec)
         try:
-            traco = self._draw.clicar(self._spec, (x, y), livre)
+            if destino is not None:
+                traco = draw.anexar_bloco(self._spec, destino[0], tipo)
+            else:
+                rumo = destino[2] if destino else 0.0
+                traco = draw.novo_fio_com_bloco(self._spec, (x, y), tipo, rumo)
         except Exception as exc:
             self._spec = self._hist.desfazer(self._spec) or self._spec
-            self._erro("Nao consegui desenhar", str(exc))
+            self._erro("Nao consegui encaixar", str(exc))
             return
         if traco is None:
-            self.status.showMessage("clique de novo para fechar o trecho", 3000)
+            self._spec = self._hist.desfazer(self._spec) or self._spec
+            self.status.showMessage(
+                "solte o bloco sobre a ponta de um fio", 4000
+            )
+            return
         self._apos_edicao()
+        self.status.showMessage(traco.descricao, 4000)
 
-    def _arrasto(self, fio: str, indice: int, x: float, y: float) -> None:
-        """Soltar um ponto edita o PARAMETRO que o coloca ali."""
+    def _hover(self, x: float, y: float) -> None:
+        alvo = self._localizar(x, y)
+        self._alvo = alvo
+        self.canvas.destacar(alvo.ponto if alvo else None, alvo.tipo if alvo else "")
+        if alvo is not None:
+            self.status.showMessage(interact.descrever(alvo, self._ws))
+        elif self._spec is not None and not self._spec.wires:
+            self.status.showMessage(DICA_VAZIA)
+        else:
+            self.status.clearMessage()
+
+    def _desmarcar(self) -> None:
+        self._alvo = None
+        self.canvas.destacar(None)
+        self.status.clearMessage()
+
+    def _clique(self, x: float, y: float, livre: bool) -> None:
+        """Clique na ponta cresce o fio. Clique no vazio nao cria mais nada.
+
+        Antes qualquer clique fora da antena virava um elemento parasita novo,
+        sem aviso -- era metade do "o desenho nao faz o que espero".
+        """
+        if self._spec is None:
+            return
+
+        alvo = self._localizar(x, y)
+        if alvo is not None and not alvo.editavel:
+            self.status.showMessage(
+                f"{alvo.wire} acompanha o outro braco; edite o original", 4000
+            )
+            return
+
+        if alvo is None:
+            if draw.tem_antena(self._spec):
+                self._desmarcar()  # o vazio so desmarca
+                return
+            self._hist.marcar(self._spec)
+            try:
+                draw.primeiro_braco(self._spec, (x, y), livre)
+            except Exception as exc:
+                self._spec = self._hist.desfazer(self._spec) or self._spec
+                self._erro("Nao consegui desenhar", str(exc))
+                return
+            self._apos_edicao()
+            return
+
+        if alvo.tipo != "ponta":
+            self.status.showMessage(interact.descrever(alvo, self._ws), 4000)
+            return
+
+        # Cresce a partir daquela ponta, na direcao do proprio clique nao --
+        # nao ha para onde ir ainda.  Um clique na ponta so a seleciona; o
+        # trecho novo nasce do arrasto ou do bloco solto ali.
+        self.status.showMessage(
+            f"ponta de {alvo.wire} selecionada — arraste para esticar, "
+            "ou solte um bloco aqui",
+            5000,
+        )
+
+    def _arrasto(self, x0: float, y0: float, x1: float, y1: float,
+                 livre: bool) -> None:
+        """Arrastar ponta, vertice ou aresta muda o comprimento do trecho.
+
+        Puxar a ponta de um fio que ainda nao tem para onde crescer ESTENDE o
+        fio; puxar qualquer outra coisa ajusta o trecho que ja existe.
+        """
         if self._spec is None or self._ws is None:
             return
+        alvo = self._localizar(x0, y0)
+        if alvo is None:
+            return
+        if not alvo.editavel:
+            self.status.showMessage(
+                f"{alvo.wire} acompanha o outro braco; arraste o original", 4000
+            )
+            return
+
+        indice = alvo.indice + 1 if alvo.tipo == "aresta" else alvo.indice
+        if indice == 0:
+            self.status.showMessage("o inicio do fio nao se move sozinho", 3000)
+            return
+
+        self._hist.marcar(self._spec)
+        ok, msg = self._ajustar_trecho(alvo.wire, indice, (x1, y1))
+        if not ok:
+            self._spec = self._hist.desfazer(self._spec) or self._spec
+            if msg:
+                self.status.showMessage(msg, 5000)
+            return
+        if msg:
+            self.status.showMessage(msg, 4000)
+        self._apos_edicao()
+
+    def _ajustar_trecho(self, fio: str, indice: int, destino) -> tuple[bool, str]:
+        """Faz o vertice ``indice`` cair em ``destino``, editando o parametro."""
+        import numpy as np
+
         from ..core.solve import apply_edit, solve_field
 
         alvo = next((w for w in self._spec.wires if w.name == fio), None)
-        if alvo is None or alvo.mirror_of:
-            self.status.showMessage(
-                f"{fio} acompanha outro fio; arraste o original", 4000
-            )
-            return
-
-        import numpy as np
+        if alvo is None or not alvo.blocks:
+            return False, ""
 
         verts = self._ws.wire(fio).centerline.points(self._ws.params)
-        if indice == 0 or indice >= len(verts):
-            self.status.showMessage("este ponto nao se move sozinho", 3000)
-            return
-        comprimento = float(np.linalg.norm(np.array([x, y]) - verts[indice - 1][:2]))
+        if indice >= len(verts):
+            return False, ""
+        comprimento = float(
+            np.linalg.norm(np.asarray(destino) - verts[indice - 1][:2])
+        )
 
         retos = [i for i, b in enumerate(alvo.blocks) if b.get("type") == "straight"]
         if not retos:
-            return
-        bloco = min(len(retos), indice) - 1
-        campo = str(alvo.blocks[retos[bloco]].get("len", ""))
+            return False, "este fio nao tem trecho reto para ajustar"
+        bloco = retos[min(indice, len(retos)) - 1]
+        campo = str(alvo.blocks[bloco].get("len", ""))
 
         edit = solve_field(campo, comprimento, self._ws.params)
         if edit.kind == "ambiguous":
-            self.status.showMessage(
-                f"depende de {', '.join(edit.candidates)}; ajuste no Avancado", 5000
+            return False, (
+                f"depende de {', '.join(edit.candidates)}; ajuste no Avancado"
             )
-            return
         if not edit.ok:
-            self.status.showMessage(edit.reason, 5000)
-            return
-
-        self._hist.marcar(self._spec)
+            return False, edit.reason
         apply_edit(self._spec, edit, wire=self._spec.wires.index(alvo),
-                   block=retos[bloco], field_name="len")
-        if edit.affects:
-            self.status.showMessage(f"tambem mudou: {', '.join(edit.affects)}", 4000)
-        self._apos_edicao()
-
-    def _terminar_fio(self) -> None:
-        self._draw.terminar_fio()
-        self._atualizar_dica()
+                   block=bloco, field_name="len")
+        extra = f"tambem mudou: {', '.join(edit.affects)}" if edit.affects else ""
+        return True, extra
 
     def _apagar_selecionado(self) -> None:
         if self._spec is None or not self._spec.wires:
@@ -300,7 +430,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._spec.wires = [
             w for w in self._spec.wires if w.name != alvo and w.mirror_of != alvo
         ]
-        self._draw.reset()
         self._apos_edicao()
 
     def _desfazer(self) -> None:
@@ -311,7 +440,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status.showMessage("nada para desfazer", 2000)
             return
         self._spec = anterior
-        self._draw.reset()
+        self._desmarcar()
         self._apos_edicao(marcar=False)
 
     def _refazer(self) -> None:
@@ -322,7 +451,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status.showMessage("nada para refazer", 2000)
             return
         self._spec = proximo
-        self._draw.reset()
+        self._desmarcar()
         self._apos_edicao(marcar=False)
 
     def _apos_edicao(self, marcar: bool = True) -> None:
@@ -335,7 +464,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._spec = spec
         self._path = path
         self._hist.limpar()
-        self._draw.reset()
+        self._alvo = None
         self.setWindowTitle(
             f"antfdm - {path.name if path else spec.name + ' (nao salva)'}"
         )
@@ -423,12 +552,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._corrigir.show()
 
     def _atualizar_dica(self) -> None:
-        if self._spec is None:
-            return
-        if not self._spec.wires:
+        if self._spec is not None and not self._spec.wires:
             self.status.showMessage(DICA_VAZIA)
-        elif self._draw.desenhando:
-            self.status.showMessage(DICA_DESENHANDO)
 
     def _aplicar_correcao(self) -> None:
         if self._spec is None or self._correcao_atual is None:

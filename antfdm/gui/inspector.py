@@ -303,23 +303,52 @@ class ItemProperties(QtWidgets.QTableWidget):
         self.changed.emit()
 
 
-class BlockPalette(QtWidgets.QWidget):
-    """Catalogo de bloquinhos disponiveis, lido do registro.
+class _ListaArrastavel(QtWidgets.QListWidget):
+    """Lista cujos itens saem arrastando, com o desenho do bloco junto."""
 
-    Um bloco novo registrado em blocks/library.py aparece aqui sozinho.
+    def startDrag(self, acoes) -> None:  # noqa: N802 (nome do Qt)
+        del acoes
+        item = self.currentItem()
+        if item is None:
+            return
+        from .dragdrop import icone_do_bloco, mime_do_bloco
+
+        tipo = item.data(QtCore.Qt.UserRole)
+        arrasto = QtGui.QDrag(self)
+        arrasto.setMimeData(mime_do_bloco(tipo))
+        pixmap = icone_do_bloco(tipo, 72, 38)
+        arrasto.setPixmap(pixmap)
+        arrasto.setHotSpot(QtCore.QPoint(pixmap.width() // 2, pixmap.height() // 2))
+        arrasto.exec(QtCore.Qt.CopyAction)
+
+
+class BlockPalette(QtWidgets.QWidget):
+    """Fichas dos blocos, para arrastar ate a antena.
+
+    Cada ficha e desenhada CONSTRUINDO o bloco, entao o que se ve na paleta e o
+    que vai aparecer no fio.  Os nomes sao em portugues: ninguem precisa saber
+    o que e 'straight' ou 'vee' para desenhar uma antena.
     """
 
     add_requested = QtCore.Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        from .dragdrop import icone_do_bloco, nome_amigavel
+
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
 
-        self.lista = QtWidgets.QListWidget()
+        self.lista = _ListaArrastavel()
+        self.lista.setDragEnabled(True)
+        self.lista.setIconSize(QtCore.QSize(64, 34))
+        self.lista.setSpacing(2)
         for tipo, resumo, campos in blk.describe():
-            it = QtWidgets.QListWidgetItem(f"{tipo}")
+            if tipo == "jump":
+                continue  # move o cursor sem desenhar; nao ha ficha para mostrar
+            it = QtWidgets.QListWidgetItem(nome_amigavel(tipo))
+            it.setIcon(QtGui.QIcon(icone_do_bloco(tipo)))
             it.setData(QtCore.Qt.UserRole, tipo)
             it.setToolTip(f"{resumo}\n\ncampos: {', '.join(campos)}")
             self.lista.addItem(it)
@@ -328,11 +357,7 @@ class BlockPalette(QtWidgets.QWidget):
         )
         lay.addWidget(self.lista)
 
-        self.botao = QtWidgets.QPushButton("Adicionar ao fio selecionado")
-        self.botao.clicked.connect(self._emit)
-        lay.addWidget(self.botao)
-
-        self.dica = QtWidgets.QLabel("")
+        self.dica = QtWidgets.QLabel("arraste ate a ponta do fio")
         self.dica.setWordWrap(True)
         self.dica.setStyleSheet("color:#8b919b; padding:2px 4px;")
         lay.addWidget(self.dica)
@@ -347,12 +372,12 @@ class BlockPalette(QtWidgets.QWidget):
 
     def _dica(self, cur, _prev) -> None:
         if cur is None:
-            self.dica.setText("")
+            self.dica.setText("arraste ate a ponta do fio")
             return
         tipo = cur.data(QtCore.Qt.UserRole)
-        for t, resumo, campos in blk.describe():
+        for t, resumo, _campos in blk.describe():
             if t == tipo:
-                self.dica.setText(f"{resumo}\ncampos: {', '.join(campos)}")
+                self.dica.setText(resumo)
                 return
 
 

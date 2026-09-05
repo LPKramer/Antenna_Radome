@@ -151,10 +151,15 @@ def win_yagi(app):
 
 
 def test_paleta_vem_do_registro_de_blocos(win_yagi):
-    """Um bloco novo em blocks/library.py precisa aparecer sem codigo de GUI."""
+    """Um bloco novo em blocks/library.py precisa aparecer sem codigo de GUI.
+
+    Menos 'jump', que move o cursor sem desenhar: nao ha geometria para virar
+    ficha, e uma ficha em branco na paleta so confundiria.
+    """
     from antfdm import blocks
 
-    assert win_yagi.palette_blocos.lista.count() == len(blocks.catalog())
+    esperados = [t for t in blocks.catalog() if t != "jump"]
+    assert win_yagi.palette_blocos.lista.count() == len(esperados)
 
 
 def test_arvore_mostra_blocos_em_fio_composto(win_yagi):

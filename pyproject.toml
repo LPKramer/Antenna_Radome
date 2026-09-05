@@ -30,3 +30,4 @@ antfdm = ["recipes/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: leva segundos (booleanos do OCCT)"]

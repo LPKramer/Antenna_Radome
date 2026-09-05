@@ -1,20 +1,14 @@
-"""Desenhar a antena clicando.
+"""Criar e crescer a antena por gestos.
 
-Nao existe botao de modo.  O gesto decide:
-
-    clique em espaco vazio  -> poe um ponto do fio
-    arrastar espaco vazio   -> move a vista
-    arrastar sobre um ponto -> move aquele ponto
-    Esc / duplo clique      -> termina o fio; o proximo clique comeca outro
-
-A diferenca entre clique e arrasto sai do movimento do mouse, nao de um controle
-na barra.  Era o ultimo botao que sobraria, e tirar ele e o que faz "simples
-cliques" ser literalmente verdade.
+Nao ha maquina de estados nem modo de desenho.  Antes existia "fio ativo" e
+"pendente" porque o clique caia no vazio e o programa precisava lembrar o que
+estava sendo desenhado.  Com as pontas viraveis em alvo, o gesto ja diz tudo:
+voce clica NA ponta que quer crescer, e a ponta nova fica pronta para o proximo
+clique.  Isso apagou todo o estado.
 
 Cada traco cria seu proprio parametro (``L1``, ``A1``, ...).  Voce nunca digita
-um nome, mas o CST recebe um modelo parametrico e a Parameter List vem populada
--- que e a razao de existir do projeto inteiro.  Assar o numero aqui emitiria
-``.X2 "42.5"`` e a ferramenta perderia o sentido.
+um nome, mas o CST recebe a Parameter List populada -- assar o numero emitiria
+``.X2 "42.5"`` e a ferramenta perderia a razao de existir.
 """
 
 from __future__ import annotations
@@ -25,10 +19,10 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..core.solve import format_number
-from ..core.spec import AntennaSpec, FeedSpec, StartSpec, WireSpec
+from ..core.spec import AntennaSpec, FeedSpec, WireSpec
 
-# Encaixes.  Comprimento em meio milimetro e angulo em 15 graus cobrem quase todo
-# desenho de antena sem obrigar a mirar com precisao de pixel.
+# Encaixes.  Meio milimetro e 15 graus cobrem quase todo desenho de antena sem
+# obrigar a mirar com precisao de pixel.
 PASSO_MM = 0.5
 PASSO_GRAUS = 15.0
 
@@ -39,155 +33,137 @@ def _snap(v: float, passo: float) -> float:
 
 @dataclass
 class Traco:
-    """O que um clique produziu, para a barra de estado contar."""
+    """O que um gesto produziu, para a barra de estado contar."""
 
     descricao: str
     comprimento_mm: float
+    wire: str
 
 
-class DrawController:
-    """Traduz cliques em edicoes do spec.
+# --------------------------------------------------------------------------
+# os tres gestos que criam geometria
+# --------------------------------------------------------------------------
 
-    Nao conhece Qt: recebe posicoes em milimetros e devolve o que mudou.  Isso
-    deixa o desenho testavel sem abrir janela -- e o teste do dipolo em dois
-    cliques roda sem tela.
+
+def primeiro_braco(spec: AntennaSpec, ponto, livre: bool = False) -> Traco:
+    """Um clique so ja da um dipolo: braco, espelho e alimentacao.
+
+    A alimentacao fica na origem porque e o unico ponto que deixa as expressoes
+    legiveis (``Gap/2``, ``-Gap/2``) e o espelho exato.
     """
+    p = np.asarray(ponto, dtype=float)[:2]
+    gap = _valor(spec, "Gap", 4.0)
+    comp, ang = _polar(p, np.zeros(2), livre)
+    comp = max(comp - gap / 2.0, PASSO_MM)
 
-    def __init__(self) -> None:
-        self.fio_ativo: int | None = None  # fio sendo estendido
-        self.pendente: np.ndarray | None = None  # inicio de um fio ainda sem traco
+    nome_l = _proximo(spec, "L")
+    _add_param(spec, nome_l, comp, "Comprimento do braco (mm)")
 
-    # ------------------------------------------------------------------
-    def reset(self) -> None:
-        self.fio_ativo = None
-        self.pendente = None
+    horizontal = abs(math.cos(math.radians(ang))) >= abs(math.sin(math.radians(ang)))
+    eixo = "x" if horizontal else "y"
+    if horizontal:
+        inicio = {"x": "Gap/2" if p[0] >= 0 else "-Gap/2", "y": "0", "dir": _ang(ang)}
+        meio, oposto = ("Gap/2", "0", "0"), ("-Gap/2", "0", "0")
+    else:
+        inicio = {"x": "0", "y": "Gap/2" if p[1] >= 0 else "-Gap/2", "dir": _ang(ang)}
+        meio, oposto = ("0", "Gap/2", "0"), ("0", "-Gap/2", "0")
 
-    def terminar_fio(self) -> None:
-        """Esc ou duplo clique: o proximo clique comeca outro fio."""
-        self.reset()
+    spec.wires.append(
+        WireSpec.model_validate({
+            "name": "braco_1", "role": "driven", "start": inicio,
+            "blocks": [{"type": "straight", "len": nome_l}],
+        })
+    )
+    spec.wires.append(
+        WireSpec.model_validate({
+            "name": "braco_2", "role": "driven",
+            "mirror_of": "braco_1", "mirror_axis": eixo,
+        })
+    )
+    if spec.feed is None:
+        spec.feed = FeedSpec.model_validate({"p1": list(oposto), "p2": list(meio)})
+    return Traco("dipolo com dois bracos", comp, "braco_1")
 
-    @property
-    def desenhando(self) -> bool:
-        return self.fio_ativo is not None or self.pendente is not None
 
-    # ------------------------------------------------------------------
-    def clicar(self, spec: AntennaSpec, ponto, livre: bool = False) -> Traco | None:
-        """Processa um clique em ``ponto`` (mm). Devolve o que foi criado."""
-        p = np.array([float(ponto[0]), float(ponto[1])])
+def crescer(
+    spec: AntennaSpec, wire: str, ponto, livre: bool = False
+) -> Traco | None:
+    """Anexa um trecho ao FIM do fio, indo ate ``ponto``.
 
-        if self.fio_ativo is not None:
-            return self._estender(spec, p, livre)
-        if self.pendente is not None:
-            traco = self._novo_fio(spec, self.pendente, p, livre)
-            self.pendente = None
-            return traco
-        if not _tem_alimentado(spec):
-            return self._primeiro_braco(spec, p, livre)
-        # Fio novo: o primeiro clique so marca de onde ele sai.  Guardar aqui, e
-        # nao no spec, evita um fio sem nenhum traco -- que seria invalido.
-        self.pendente = p
+    A ponta nova fica imediatamente clicavel, entao um fio de varios trechos sai
+    de cliques seguidos sem nenhum modo.
+    """
+    alvo = _fio(spec, wire)
+    if alvo is None or alvo.mirror_of:
         return None
 
-    # ------------------------------------------------------------------
-    def _primeiro_braco(self, spec: AntennaSpec, p: np.ndarray, livre: bool) -> Traco:
-        """Um clique so ja da um dipolo: braco, espelho e alimentacao.
+    ws = spec.to_wireset()
+    verts = ws.wire(wire).centerline.points(ws.params)
+    p = np.asarray(ponto, dtype=float)[:2]
+    comp, ang = _polar(p, verts[-1][:2], livre)
+    if comp < PASSO_MM:
+        return None
 
-        A alimentacao fica na origem porque e o unico ponto que deixa as
-        expressoes legiveis (``Gap/2``, ``-Gap/2``) e o espelho exato.
-        """
-        gap = spec_valor(spec, "Gap", 4.0)
-        comp, ang = _polar(p, np.zeros(2), livre)
-        comp = max(comp - gap / 2.0, PASSO_MM)
+    virada = _normaliza(ang - _rumo(verts))
+    nome_l = _proximo(spec, "L")
+    _add_param(spec, nome_l, comp, "Comprimento do trecho (mm)")
 
-        nome_l = _proximo(spec, "L")
+    if abs(virada) > 0.01:
         nome_a = _proximo(spec, "A")
-        _add_param(spec, nome_l, comp, "Comprimento do braco (mm)")
+        _add_param(spec, nome_a, virada, "Angulo da dobra (graus)")
+        alvo.blocks.append({"type": "bend", "angle": nome_a, "fillet": _raio(spec)})
+    alvo.blocks.append({"type": "straight", "len": nome_l})
+    return Traco(f"trecho em {wire}", comp, wire)
 
-        eixo = "x" if abs(math.cos(math.radians(ang))) >= abs(math.sin(math.radians(ang))) else "y"
-        if eixo == "x":
-            inicio = {"x": "Gap/2" if p[0] >= 0 else "-Gap/2", "y": "0", "dir": _ang(ang)}
-        else:
-            inicio = {"x": "0", "y": "Gap/2" if p[1] >= 0 else "-Gap/2", "dir": _ang(ang)}
 
-        spec.wires.append(
-            WireSpec.model_validate(
-                {
-                    "name": "braco_1",
-                    "role": "driven",
-                    "start": inicio,
-                    "blocks": [{"type": "straight", "len": nome_l}],
-                }
-            )
-        )
-        spec.wires.append(
-            WireSpec.model_validate(
-                {
-                    "name": "braco_2",
-                    "role": "driven",
-                    "mirror_of": "braco_1",
-                    "mirror_axis": eixo,
-                }
-            )
-        )
-        if spec.feed is None:
-            meio = ("Gap/2", "0", "0") if eixo == "x" else ("0", "Gap/2", "0")
-            oposto = ("-Gap/2", "0", "0") if eixo == "x" else ("0", "-Gap/2", "0")
-            spec.feed = FeedSpec.model_validate({"p1": list(oposto), "p2": list(meio)})
+def novo_elemento(
+    spec: AntennaSpec, centro, comprimento: float, angulo: float = 90.0,
+    nome: str | None = None,
+) -> Traco:
+    """Elemento solto: refletor, diretor, qualquer fio que nao se conecta.
 
-        del nome_a
-        self.fio_ativo = 0
-        return Traco("dipolo com dois bracos", comp)
+    Nasce CENTRADO no ponto, que e como se pensa um elemento de arranjo -- a
+    posicao dele no boom e o que importa, nao onde a ponta comeca.
+    """
+    c = np.asarray(centro, dtype=float)[:2]
+    comp = max(_snap(float(comprimento), PASSO_MM), PASSO_MM)
+    ang = _snap(float(angulo), PASSO_GRAUS)
 
-    def _novo_fio(
-        self, spec: AntennaSpec, inicio: np.ndarray, p: np.ndarray, livre: bool
-    ) -> Traco:
-        """Fio separado: refletor, diretor, qualquer elemento que nao se conecta."""
-        comp, ang = _polar(p, inicio, livre)
-        nome_l = _proximo(spec, "L")
-        _add_param(spec, nome_l, comp, "Comprimento do elemento (mm)")
+    nome_l = _proximo(spec, "L")
+    _add_param(spec, nome_l, comp, "Comprimento do elemento (mm)")
 
-        nome = _nome_livre(spec, "elemento")
-        spec.wires.append(
-            WireSpec.model_validate(
-                {
-                    "name": nome,
-                    "role": "parasitic",
-                    "start": {
-                        "x": format_number(_snap(float(inicio[0]), PASSO_MM)),
-                        "y": format_number(_snap(float(inicio[1]), PASSO_MM)),
-                        "dir": _ang(ang),
-                    },
-                    "blocks": [{"type": "straight", "len": nome_l}],
-                }
-            )
-        )
-        self.fio_ativo = len(spec.wires) - 1
-        return Traco(f"{nome} (elemento parasita)", comp)
+    d = np.array([math.cos(math.radians(ang)), math.sin(math.radians(ang))])
+    inicio = c - d * comp / 2.0
+    nome = nome or _nome_livre(spec, "elemento")
+    spec.wires.append(
+        WireSpec.model_validate({
+            "name": nome, "role": "parasitic",
+            "start": {
+                "x": format_number(_snap(float(inicio[0]), PASSO_MM)),
+                "y": format_number(_snap(float(inicio[1]), PASSO_MM)),
+                "dir": format_number(ang),
+            },
+            "blocks": [{"type": "straight", "len": nome_l}],
+        })
+    )
+    return Traco(f"{nome} (elemento parasita)", comp, nome)
 
-    def _estender(self, spec: AntennaSpec, p: np.ndarray, livre: bool) -> Traco | None:
-        """Mais um trecho no fio que esta sendo desenhado."""
-        fio = spec.wires[self.fio_ativo]
-        ws = spec.to_wireset()
-        verts = ws.wire(fio.name).centerline.points(ws.params)
-        ultimo = verts[-1][:2]
-        rumo_atual = _rumo(verts)
 
-        comp, ang = _polar(p, ultimo, livre)
-        if comp < PASSO_MM:
-            return None
+def anexar_bloco(
+    spec: AntennaSpec, wire: str, tipo: str, campos: dict | None = None
+) -> Traco | None:
+    """Encaixa um bloco no fim do fio -- o alvo do arrasto vindo da paleta."""
+    alvo = _fio(spec, wire)
+    if alvo is None or alvo.mirror_of or alvo.vertices:
+        return None
+    from .inspector import default_block
 
-        virada = _normaliza_angulo(ang - rumo_atual)
-        nome_l = _proximo(spec, "L")
-        _add_param(spec, nome_l, comp, "Comprimento do trecho (mm)")
-
-        if abs(virada) > 0.01:
-            nome_a = _proximo(spec, "A")
-            _add_param(spec, nome_a, virada, "Angulo da dobra (graus)")
-            fio.blocks.append(
-                {"type": "bend", "angle": nome_a, "fillet": _raio(spec)}
-            )
-        fio.blocks.append({"type": "straight", "len": nome_l})
-        return Traco(f"trecho em {fio.name}", comp)
+    bloco = default_block(tipo)
+    bloco.update(campos or {})
+    antes = spec.to_wireset().wire(wire).centerline.length(spec.to_wireset().params)
+    alvo.blocks.append(bloco)
+    depois = spec.to_wireset().wire(wire).centerline.length(spec.to_wireset().params)
+    return Traco(f"{tipo} em {wire}", depois - antes, wire)
 
 
 # --------------------------------------------------------------------------
@@ -195,12 +171,54 @@ class DrawController:
 # --------------------------------------------------------------------------
 
 
-def _tem_alimentado(spec: AntennaSpec) -> bool:
-    return any(w.role == "driven" for w in spec.wires)
+def novo_fio_com_bloco(
+    spec: AntennaSpec, ponto, tipo: str, rumo: float = 0.0
+) -> Traco | None:
+    """Fio novo comecando naquele ponto, feito do bloco solto ali.
+
+    Blocos como ``bend`` nao produzem geometria sozinhos -- eles dobram o que
+    veio antes.  Nesses casos entra uma reta curta na frente, que e tambem o que
+    a ficha da paleta desenha.
+    """
+    from ..blocks import BlockError, Cursor, build_chain
+    from .inspector import default_block
+
+    p = np.asarray(ponto, dtype=float)[:2]
+    bloco = default_block(tipo)
+    inicio = {
+        "x": format_number(_snap(float(p[0]), PASSO_MM)),
+        "y": format_number(_snap(float(p[1]), PASSO_MM)),
+        "dir": format_number(_snap(float(rumo), PASSO_GRAUS)),
+    }
+    for blocos in ([bloco], [{"type": "straight", "len": "8"}, bloco]):
+        try:
+            build_chain(blocos, Cursor(x=inicio["x"], y=inicio["y"],
+                                       heading=inicio["dir"]))
+        except (BlockError, ValueError):
+            continue
+        nome = _nome_livre(spec, "elemento")
+        spec.wires.append(
+            WireSpec.model_validate({
+                "name": nome, "role": "parasitic",
+                "start": inicio, "blocks": blocos,
+            })
+        )
+        ws = spec.to_wireset()
+        return Traco(
+            f"{nome} solto", ws.wire(nome).centerline.length(ws.params), nome
+        )
+    return None
+
+
+def tem_antena(spec: AntennaSpec) -> bool:
+    return bool(spec.wires)
+
+
+def _fio(spec: AntennaSpec, nome: str):
+    return next((w for w in spec.wires if w.name == nome), None)
 
 
 def _polar(p: np.ndarray, origem: np.ndarray, livre: bool) -> tuple[float, float]:
-    """Comprimento e angulo do traco, ja encaixados."""
     d = p - origem
     comp = float(np.hypot(d[0], d[1]))
     ang = math.degrees(math.atan2(d[1], d[0]))
@@ -211,26 +229,25 @@ def _polar(p: np.ndarray, origem: np.ndarray, livre: bool) -> tuple[float, float
 
 
 def _rumo(verts: np.ndarray) -> float:
-    """Direcao do ultimo trecho, em graus."""
     if len(verts) < 2:
         return 0.0
     d = verts[-1][:2] - verts[-2][:2]
     return math.degrees(math.atan2(d[1], d[0]))
 
 
-def _normaliza_angulo(a: float) -> float:
+def _normaliza(a: float) -> float:
     return (a + 180.0) % 360.0 - 180.0
 
 
 def _ang(a: float) -> str:
-    return format_number(_normaliza_angulo(a))
+    return format_number(_normaliza(a))
 
 
 def _raio(spec: AntennaSpec) -> str:
     return "Radius" if "Radius" in spec.params else format_number(2.0)
 
 
-def spec_valor(spec: AntennaSpec, nome: str, padrao: float) -> float:
+def _valor(spec: AntennaSpec, nome: str, padrao: float) -> float:
     try:
         return spec.to_wireset().params.values().get(nome, padrao)
     except Exception:
@@ -238,7 +255,6 @@ def spec_valor(spec: AntennaSpec, nome: str, padrao: float) -> float:
 
 
 def _proximo(spec: AntennaSpec, prefixo: str) -> str:
-    """Proximo nome livre da serie L1, L2, ... ou A1, A2, ..."""
     n = 1
     existentes = {k.lower() for k in spec.params}
     while f"{prefixo}{n}".lower() in existentes:

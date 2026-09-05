@@ -39,45 +39,65 @@ antfdm sync  antfdm/recipes/dipolo_y.yaml --cst Dipolo.cst --dry-run
 antfdm print antfdm/recipes/dipolo_y.yaml --out saida
 ```
 
-## Editor gráfico: clicar põe ponto
+## Editor: a antena responde ao toque
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  868 MHz    Nova  Abrir  Salvar    Gerar CST  Gerar STL   ⚙  │
-├──────────────────────────────────────────────────────────────┤
-│                    ●───────────╪───────────●                 │
-│                    │←──────  λ/2  ──────→│                   │
-├──────────────────────────────────────────────────────────────┤
-│  fio 166 mm · 0.48 λ            tudo dentro da faixa         │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────┬──────────┐
+│ 868 MHz  Nova Abrir Salvar  CST  STL    ⚙  │ ──────   │
+├────────────────────────────────────────────┤ ──╮      │
+│                                            │ ─╱╲─     │
+│         ●━━━━━━━━━━━╪━━━━━━━━━━━●          │ ∿∿∿∿     │
+│         │←────── λ/2 ──────→│               │  ◎       │
+├────────────────────────────────────────────┴──────────┤
+│ fio 166 mm · 0.48 λ                                   │
+└───────────────────────────────────────────────────────┘
 ```
 
-**Um clique já dá um dipolo** — braço, espelho e alimentação nascem juntos, na
-frequência da barra. Não existe botão de modo; o gesto decide:
+Não há botão de modo. O que está sob o cursor decide:
 
-| Gesto | O que faz |
-|---|---|
-| clique em espaço vazio | põe um ponto do fio |
-| arrastar espaço vazio | move a vista |
-| arrastar um ponto | move aquele ponto |
-| Esc ou duplo clique | termina o fio; o próximo clique começa outro |
-| Ctrl+Z / Ctrl+Y | desfaz / refaz |
-| Alt + clique | desliga o encaixe de 15° e 0.5 mm |
+| Onde você toca | Clicar | Arrastar |
+|---|---|---|
+| **ponta livre do fio** | seleciona | estica o trecho |
+| **trecho (aresta)** | mostra o comprimento | muda o comprimento |
+| **vértice** | seleciona | move o ponto |
+| **espaço vazio** | desmarca — não cria nada | move a vista |
+| **ficha da paleta** | — | **arrasta e encaixa** na ponta mais próxima |
 
-Fios seguintes nascem parasitas (refletor, diretor) e levam dois cliques: um
-marca de onde saem, outro onde terminam.
+Com a tela vazia, o primeiro clique cria um dipolo inteiro — braço, espelho e
+alimentação, na frequência da barra.
 
-**Cada traço cria seu parâmetro em silêncio** (`L1`, `A1`, …) com descrição.
-Você nunca digita um nome, mas o CST recebe a Parameter List populada — que é a
-razão de existir do projeto. Arrastar um ponto edita *o parâmetro*, preservando
-a forma da expressão.
+**Arrastar uma ficha é o gesto principal.** A ponta mais próxima acende e um
+fantasma mostra o resultado antes de soltar. Soltar longe cria um elemento
+solto (refletor, diretor). As fichas são desenhadas *construindo cada bloco*,
+então o que se vê na paleta é o que vai aparecer no fio — e os nomes são
+`reta`, `dobra`, `serpentina`, `espiral`, não `straight`/`bend`/`meander`.
 
-O rodapé responde "vai funcionar?" em uma linha, sem jargão: *tudo dentro da
-faixa*, ou `o braço está 30% longo demais para 868 MHz` com um botão **corrigir**.
+**Cada traço cria seu parâmetro em silêncio** (`L1`, `A1`, …). Você nunca digita
+um nome, mas o CST recebe a Parameter List populada — que é a razão de existir
+do projeto. Arrastar edita *o parâmetro*, preservando a forma da expressão.
 
-Sete controles na tela. Parâmetros, blocos, propriedades e paleta continuam
-existindo atrás do **Avançado** (Ctrl+E) — nada foi apagado, só saiu da frente.
-Há um teste que falha se a tela padrão passar de 8 controles.
+Ctrl+Z desfaz. Ctrl+E abre o **Avançado** com parâmetros, árvore de blocos e
+propriedades — nada foi apagado, só saiu da frente. Um teste falha se a tela
+padrão passar de 8 controles.
+
+## A peça: só segurando o fio
+
+Duas metades, canal para o fio, parafusos M3. **Três ajustes**, contra os onze
+de antes — saíram pinos de alinhamento, orelhas periódicas, alojamento de coax
+e gravação.
+
+Duas decisões que valem registro:
+
+- **A aba do parafuso fica no eixo, além da ponta do fio.** Alargar a fita
+  inteira parecia mais simples, mas não passa em filete apertado: com
+  meia-largura maior que o raio da curva, a face interna se auto-intersecta.
+  Além da ponta o caminho é reto por definição.
+
+- **Ligação automática no lugar de "boom" e "ponte".** Elementos parasitas não
+  se tocam e os dois braços de um dipolo também não; sem ligação a peça sairia
+  em vários pedaços. Em vez de duas features com regras próprias, uma regra só:
+  se o sólido saiu em mais de uma parte, liga as mais próximas até virar uma.
+  Um dipolo precisa de 0 ligações (as abas já cobrem o gap); um Yagi, de 3.
 
 ## Avisos (`antfdm check`)
 
@@ -95,19 +115,6 @@ Elemento **dobrado** (serpentina, espiral) dispensa a conferência por meia onda
 comparar comprimento de fio com λ/2 acusaria "525% longo demais" numa espiral
 correta. O quociente fio/vão separa os casos (reto ~1.0, serpentina 1.5,
 espiral 6.3).
-
-### No Avançado (Ctrl+E)
-
-Parâmetros, árvore de fios/blocos, propriedades do item e paleta de bloquinhos —
-tudo que a tela mostrava antes. A paleta lê o registro de blocos, então um bloco
-novo em `blocks/library.py` aparece sem código de GUI.
-
-O radome é desenhado traçando a linha de centro com uma caneta da espessura da
-peça — o traçado do Qt *é* a varredura do perfil, então sai correto inclusive nos
-filetes, onde um offset ingênuo erraria.
-
-A GUI edita o mesmo `AntennaSpec` que o CLI consome e salva o mesmo YAML. Nada
-fica preso à interface — garantido por `test_gui_e_cli_produzem_o_mesmo_spec`.
 
 ## Pela linha de comando
 
@@ -205,7 +212,7 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 
 ## Estado
 
-**Fases 1, 3, 5 e parte da 2 implementadas.** 159 testes passando.
+**Fases 1, 3, 5 e parte da 2 implementadas.** 171 testes passando.
 
 | Módulo | Estado |
 |---|---|
@@ -213,7 +220,7 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 | `cst/vba.py` — emissor VBA paramétrico | pronto |
 | `cad/` — sweep, clamshell, export | pronto |
 | `io/cst_params_in.py` + `antfdm sync` | pronto |
-| `gui/` — editor PySide6, desenho por cliques, undo | pronto |
+| `gui/` — editor por gestos, paleta arrastável, undo | pronto |
 | `check/rules.py` + `antfdm check` — avisos com correção | pronto |
 | `core/solve.py` — arrastar edita o parâmetro | pronto |
 | `blocks/` — cursor simbólico, 8 blocos, registro | pronto |

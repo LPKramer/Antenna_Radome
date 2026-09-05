@@ -47,10 +47,14 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
     arrastar ponto  -> move o ponto | Esc / duplo clique -> termina o fio
     """
 
-    vertexPicked = QtCore.Signal(str, int)  # nome do fio, indice do vertice
-    pontoClicado = QtCore.Signal(float, float, bool)  # x, y (mm), livre (Alt)
-    pontoArrastado = QtCore.Signal(str, int, float, float)  # fio, indice, x, y
-    fioTerminado = QtCore.Signal()
+    # O canvas so reporta POSICAO; quem descobre o que esta ali e a janela, que
+    # tem o spec.  Assim "o que cada gesto faz" mora num lugar so -- interact.py --
+    # e continua testavel sem abrir tela.
+    cliqueEm = QtCore.Signal(float, float, bool)  # x, y (mm), livre (Alt)
+    arrastoAte = QtCore.Signal(float, float, float, float, bool)  # x0,y0 -> x1,y1
+    cursorEm = QtCore.Signal(float, float)  # realce ao passar o mouse
+    escPressionado = QtCore.Signal()
+    blocoSolto = QtCore.Signal(str, float, float)  # tipo, x, y (mm)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,7 +77,13 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
         self._content = QtCore.QRectF()
         self._lambda_mm: float | None = None
         self._press: QtCore.QPoint | None = None
-        self._arrastando: tuple[str, int] | None = None
+        self._press_mundo: tuple[float, float] | None = None
+        self._sobre_alvo = False
+        self._hit_test = None  # a janela liga: (x, y) -> bool
+        self._realce = None
+        self._fantasma = None
+        self._encaixe = None  # a janela liga: (x, y) -> (fio, ponto, rumo) | None
+        self.setAcceptDrops(True)
         self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setMouseTracking(True)
@@ -106,6 +116,103 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
     def set_show_vertices(self, on: bool) -> None:
         self._show_vertices = on
         self._rebuild()
+
+    def set_encaixe(self, fn) -> None:
+        """Como achar a ponta que recebe o bloco: (x, y) -> (fio, ponto, rumo)."""
+        self._encaixe = fn
+
+    def _mostrar_fantasma(self, pontos) -> None:
+        """Previa do que o bloco vai virar, antes de soltar."""
+        if self._fantasma is not None:
+            try:
+                self._scene.removeItem(self._fantasma)
+            except RuntimeError:
+                pass
+            self._fantasma = None
+        if pontos is None or len(pontos) < 2:
+            return
+        caminho = QtGui.QPainterPath()
+        caminho.moveTo(float(pontos[0][0]), float(pontos[0][1]))
+        for pt in pontos[1:]:
+            caminho.lineTo(float(pt[0]), float(pt[1]))
+        caneta = QtGui.QPen(QtGui.QColor(126, 224, 160, 220))
+        caneta.setCosmetic(True)
+        caneta.setWidth(3)
+        caneta.setStyle(QtCore.Qt.DashLine)
+        self._fantasma = self._scene.addPath(caminho, caneta)
+        self._fantasma.setZValue(50)
+
+    def dragEnterEvent(self, event) -> None:
+        from .dragdrop import tipo_do_mime
+
+        if tipo_do_mime(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event) -> None:
+        from .dragdrop import pontos_do_fantasma, tipo_do_mime
+
+        tipo = tipo_do_mime(event.mimeData())
+        if not tipo:
+            return
+        event.acceptProposedAction()
+        x, y = self._mundo(event.position().toPoint())
+        destino = self._encaixe(x, y) if self._encaixe else None
+        if destino is None:
+            self.destacar(None)
+            self._mostrar_fantasma(pontos_do_fantasma(tipo, (x, y), 0.0))
+            return
+        _fio, ponto, rumo = destino
+        self.destacar(ponto, "ponta")
+        self._mostrar_fantasma(pontos_do_fantasma(tipo, ponto, rumo))
+
+    def dragLeaveEvent(self, event) -> None:
+        del event
+        self._mostrar_fantasma(None)
+        self.destacar(None)
+
+    def dropEvent(self, event) -> None:
+        from .dragdrop import tipo_do_mime
+
+        tipo = tipo_do_mime(event.mimeData())
+        self._mostrar_fantasma(None)
+        self.destacar(None)
+        if not tipo:
+            return
+        event.acceptProposedAction()
+        x, y = self._mundo(event.position().toPoint())
+        self.blocoSolto.emit(tipo, x, y)
+
+    def set_hit_test(self, fn) -> None:
+        """Como saber se ha alvo em (x, y). Decide entre arrastar alvo e mover vista."""
+        self._hit_test = fn
+
+    def destacar(self, ponto, tipo: str = "vertice") -> None:
+        """Realca o alvo sob o cursor. ``ponto`` None apaga o realce."""
+        if self._realce is not None:
+            try:
+                self._scene.removeItem(self._realce)
+            except RuntimeError:
+                pass
+            self._realce = None
+        self._fantasma = None
+        self._encaixe = None  # a janela liga: (x, y) -> (fio, ponto, rumo) | None
+        self.setAcceptDrops(True)
+        if ponto is None:
+            return
+        cor = {
+            "ponta": QtGui.QColor("#7ee0a0"),
+            "vertice": QtGui.QColor("#f0c040"),
+            "aresta": QtGui.QColor("#e0a052"),
+        }.get(tipo, Palette.vertice)
+        r = 2.4
+        caneta = QtGui.QPen(cor)
+        caneta.setCosmetic(True)
+        caneta.setWidth(2)
+        self._realce = self._scene.addEllipse(
+            float(ponto[0]) - r, float(ponto[1]) - r, 2 * r, 2 * r,
+            caneta, QtGui.QBrush(QtGui.QColor(cor.red(), cor.green(), cor.blue(), 70)),
+        )
+        self._realce.setZValue(40)
 
     def set_lambda(self, lam: float | None) -> None:
         """Comprimento de onda, para a regua e a leitura em fracao de lambda."""
@@ -271,64 +378,58 @@ class AntennaCanvas(QtWidgets.QGraphicsView):
         p = self.mapToScene(pos)
         return p.x(), p.y()
 
-    def _alca_em(self, pos) -> tuple[str, int] | None:
-        """Vertice sob o cursor, se houver. Tolerancia constante em pixels."""
-        x, y = self._mundo(pos)
-        alvo = np.array([x, y])
-        tol = 12.0 / max(abs(self.transform().m11()), 1e-6)
-        melhor, dist = None, float("inf")
-        for nome, i, v in self._picks:
-            d = float(np.linalg.norm(v - alvo))
-            if d < dist:
-                melhor, dist = (nome, i), d
-        return melhor if melhor and dist <= tol else None
+    def tolerancia_mm(self, pixels: float = 12.0) -> float:
+        """Raio de acerto constante em pixels, convertido para o mundo."""
+        return pixels / max(abs(self.transform().m11()), 1e-6)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() != QtCore.Qt.LeftButton:
             return super().mousePressEvent(event)
         self._press = event.position().toPoint()
-        self._arrastando = self._alca_em(self._press)
-        # Sem alca sob o cursor o arrasto move a vista; com alca, move o ponto.
+        self._press_mundo = self._mundo(self._press)
+        self._sobre_alvo = bool(self._hit_test and self._hit_test(*self._press_mundo))
+        # Sem alvo sob o cursor o arrasto move a vista; com alvo, move o alvo.
         self.setDragMode(
             QtWidgets.QGraphicsView.NoDrag
-            if self._arrastando
+            if self._sobre_alvo
             else QtWidgets.QGraphicsView.ScrollHandDrag
         )
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        if self._arrastando and self._press is not None:
-            return  # o ponto so se move ao soltar, para nao recalcular a cada pixel
+        if self._sobre_alvo and self._press is not None:
+            return  # so recalcula ao soltar; refazer a geometria a cada pixel travaria
         super().mouseMoveEvent(event)
+        if self._press is None:
+            x, y = self._mundo(event.position().toPoint())
+            self.cursorEm.emit(x, y)
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         super().mouseReleaseEvent(event)
         if event.button() != QtCore.Qt.LeftButton or self._press is None:
             return
         movimento = (event.position().toPoint() - self._press).manhattanLength()
-        alca, self._arrastando, self._press = self._arrastando, None, None
+        origem = self._press_mundo
+        self._press = self._press_mundo = None
+        self._sobre_alvo = False
         self.setDragMode(QtWidgets.QGraphicsView.NoDrag)
 
         x, y = self._mundo(event.position().toPoint())
-        if alca is not None:
-            if movimento > LIMIAR_ARRASTO:
-                self.pontoArrastado.emit(alca[0], alca[1], x, y)
-            else:
-                self.vertexPicked.emit(*alca)
-            return
-        if movimento <= LIMIAR_ARRASTO:
-            livre = bool(event.modifiers() & QtCore.Qt.AltModifier)
-            self.pontoClicado.emit(x, y, livre)
+        livre = bool(event.modifiers() & QtCore.Qt.AltModifier)
+        if movimento > LIMIAR_ARRASTO:
+            if origem is not None:
+                self.arrastoAte.emit(origem[0], origem[1], x, y, livre)
+        else:
+            self.cliqueEm.emit(x, y, livre)
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if event.key() == QtCore.Qt.Key_Escape:
-            self.fioTerminado.emit()
+            self.escPressionado.emit()
             return
         super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
         self._press = None
-        self.fioTerminado.emit()
         super().mouseDoubleClickEvent(event)
 
 

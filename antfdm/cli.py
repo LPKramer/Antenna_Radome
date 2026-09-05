@@ -94,12 +94,8 @@ def cmd_print(args) -> int:
     from . import report
 
     s, ws = _load(args.spec)
-    opts = cs.ClamshellOptions(
-        station_spacing=args.station_spacing,
-        engrave=not args.no_engrave,
-    )
     print("gerando o radome (pode levar alguns segundos)...")
-    clam = cs.build(ws, opts)
+    clam = cs.build(ws, cs.ClamshellOptions(conectar=not args.sem_ligacao))
 
     checks = ex.check(clam, s.printer.bed_x, s.printer.bed_y, s.printer.bed_z)
     for c in checks:
@@ -271,9 +267,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("print", help="gera as duas metades do radome")
     common(p)
-    p.add_argument("--station-spacing", type=float, default=30.0,
-                   help="espacamento das orelhas de fixacao, em mm (padrao 30)")
-    p.add_argument("--no-engrave", action="store_true")
+    p.add_argument("--sem-ligacao", action="store_true",
+                   help="nao une elementos desconectados; a peca sai em pedacos soltos")
     p.add_argument("--no-step", action="store_true")
     p.set_defaults(func=cmd_print)
 
@@ -288,8 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("build", help="gera macro VBA e radome de uma vez")
     common(p)
     p.add_argument("--overwrite-params", action="store_true")
-    p.add_argument("--station-spacing", type=float, default=30.0)
-    p.add_argument("--no-engrave", action="store_true")
+    p.add_argument("--sem-ligacao", action="store_true")
     p.add_argument("--no-step", action="store_true")
     p.set_defaults(func=cmd_build)
 

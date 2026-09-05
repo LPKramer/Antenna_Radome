@@ -100,11 +100,17 @@ def test_editar_vertice_pelo_painel_altera_o_spec(win, app):
 
 
 def test_enquadramento_ignora_a_grade(win, app):
-    """fit() precisa enquadrar a antena, nao a grade que e bem maior."""
+    """fit() precisa enquadrar a antena, nao a grade que e bem maior.
+
+    Compara com o Ltotal da propria antena em vez de um numero fixo: a margem
+    do contorno ja mudou uma vez, e o teste quebrou sem que nada de errado
+    tivesse acontecido.
+    """
     win.canvas.fit()
     r = win.canvas._content
-    assert r.width() == pytest.approx(111.2, abs=1.0)  # ~Ltotal + secao
-    assert r.height() < 20.0
+    ltotal = win._ws.params.values()["Ltotal"]
+    assert ltotal < r.width() < ltotal * 1.2
+    assert r.height() < ltotal * 0.3
 
 
 def test_gui_e_cli_produzem_o_mesmo_spec(win, app, tmp_path):

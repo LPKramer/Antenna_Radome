@@ -270,15 +270,38 @@ def stations(segments, spacing: float, margin: float = 0.0) -> list[float]:
 def sample_path(segments, step: float) -> np.ndarray:
     """Amostra o caminho a cada ``step`` mm, incluindo as duas pontas.
 
-    Usado pelo emissor de deck NEC e pelas verificacoes; nao pelo CAD, que
-    consome os segmentos exatos.
+    Vetorizado por segmento.  A versao ponto a ponto chamava ``point_at`` num
+    laco Python, e cada chamada montava vetores numpy de tres elementos: 11 us
+    por ponto, o que dava 48 ms so para desenhar a espiral.  Como o canvas
+    reamostra a cada quadro, isso era o teto da interatividade.
     """
     if step <= 0:
         raise GeometryError("passo de amostragem precisa ser positivo")
-    out: list[Vec] = []
+    if not segments:
+        raise GeometryError("caminho vazio")
+
+    partes: list[np.ndarray] = []
     for seg in segments:
-        count = max(1, int(math.ceil(seg.length / step)))
-        for k in range(count):
-            out.append(seg.point_at(seg.length * k / count))
-    out.append(segments[-1].point_at(segments[-1].length))
-    return np.array(out)
+        n = max(1, int(math.ceil(seg.length / step)))
+        t = np.linspace(0.0, 1.0, n, endpoint=False)
+        if isinstance(seg, Line):
+            partes.append(seg.start + np.outer(t, seg.end - seg.start))
+        else:
+            partes.append(_amostrar_arco(seg, t))
+    partes.append(segments[-1].point_at(segments[-1].length).reshape(1, 3))
+    return np.concatenate(partes)
+
+
+def _amostrar_arco(arc: "Arc", t: np.ndarray) -> np.ndarray:
+    """Rodrigues aplicado a todos os angulos de uma vez."""
+    v = arc.start - arc.center
+    ang = arc.sweep * t
+    c, s = np.cos(ang), np.sin(ang)
+    perp = np.cross(arc.normal, v)
+    axial = arc.normal * float(np.dot(arc.normal, v))
+    return (
+        arc.center
+        + np.outer(c, v)
+        + np.outer(s, perp)
+        + np.outer(1.0 - c, axial)
+    )

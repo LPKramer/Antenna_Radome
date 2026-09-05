@@ -39,7 +39,7 @@ antfdm sync  antfdm/recipes/dipolo_y.yaml --cst Dipolo.cst --dry-run
 antfdm print antfdm/recipes/dipolo_y.yaml --out saida
 ```
 
-## Editor: a antena responde ao toque
+## Editor: a antena acompanha o cursor
 
 ```
 ┌────────────────────────────────────────────┬──────────┐
@@ -53,32 +53,56 @@ antfdm print antfdm/recipes/dipolo_y.yaml --out saida
 └───────────────────────────────────────────────────────┘
 ```
 
-Não há botão de modo. O que está sob o cursor decide:
+Não há botão de modo. **O que está sob o cursor quando você aperta decide o que
+o arrasto significa**, e a antena se move *durante* o movimento:
 
-| Onde você toca | Clicar | Arrastar |
+| Aperta em | Arrastando |
+|---|---|
+| **espaço vazio** | um fio novo nasce e acompanha o cursor |
+| **ponta do fio** | a ponta segue a mão; comprimento e direção juntos |
+| **vértice** | o ponto acompanha |
+| **trecho** | o comprimento acompanha |
+| **botão do meio** (ou Shift) | move a vista |
+
+Com a tela vazia, o primeiro arrasto cria um dipolo inteiro — braço, espelho e
+alimentação. O braço espelhado acompanha tudo em tempo real.
+
+Para **acrescentar** um trecho, arraste uma ficha da paleta até a ponta: ela
+acende e um fantasma mostra o resultado antes de soltar. Soltar longe cria um
+elemento solto. As fichas são desenhadas construindo cada bloco, com nomes em
+português — `reta`, `dobra`, `serpentina`, `espiral`.
+
+Ctrl+Z desfaz o arrasto inteiro, por mais quadros que ele tenha tido. Ctrl+E
+abre o **Avançado**. Sucesso não abre diálogo: vira uma linha no rodapé. Só erro
+interrompe.
+
+## Desempenho: o orçamento de quadro
+
+A interatividade já morreu uma vez, em silêncio. O redesenho custava 161 ms num
+dipolo, então o arrasto foi desligado para "não travar" — em vez de consertar a
+lentidão, escondi o sintoma.
+
+| Receita | Antes | Depois |
 |---|---|---|
-| **ponta livre do fio** | seleciona | estica o trecho |
-| **trecho (aresta)** | mostra o comprimento | muda o comprimento |
-| **vértice** | seleciona | move o ponto |
-| **espaço vazio** | desmarca — não cria nada | move a vista |
-| **ficha da paleta** | — | **arrasta e encaixa** na ponta mais próxima |
+| dipolo | 161 ms | **2.8 ms** |
+| yagi | 149 ms | **3.0 ms** |
+| meander | 279 ms | **5.2 ms** |
+| espiral | 2870 ms | **16.4 ms** |
 
-Com a tela vazia, o primeiro clique cria um dipolo inteiro — braço, espelho e
-alimentação, na frequência da barra.
+Três correções, todas medidas:
 
-**Arrastar uma ficha é o gesto principal.** A ponta mais próxima acende e um
-fantasma mostra o resultado antes de soltar. Soltar longe cria um elemento
-solto (refletor, diretor). As fichas são desenhadas *construindo cada bloco*,
-então o que se vê na paleta é o que vai aparecer no fio — e os nomes são
-`reta`, `dobra`, `serpentina`, `espiral`, não `straight`/`bend`/`meander`.
+- **Expressão compilada em cache.** Cada coordenada voltava pelo `sympify` a
+  cada avaliação. `lambdify` foi a primeira tentativa e *piorou* a espiral para
+  1.9 s — ela tem 547 vértices com expressões todas diferentes, e lambdify faz
+  geração de código para cada uma. `compile`/`eval` é a ferramenta certa, porque
+  a sintaxe canônica já é Python.
+- **Cena incremental.** Era `scene.clear()` e recriar tudo a cada quadro. Agora
+  há um item por fio e o que muda é o caminho; a grade virou um item só.
+- **Amostragem vetorizada.** `sample_path` chamava `point_at` num laço Python,
+  montando vetores numpy de três elementos: 11 µs por ponto.
 
-**Cada traço cria seu parâmetro em silêncio** (`L1`, `A1`, …). Você nunca digita
-um nome, mas o CST recebe a Parameter List populada — que é a razão de existir
-do projeto. Arrastar edita *o parâmetro*, preservando a forma da expressão.
-
-Ctrl+Z desfaz. Ctrl+E abre o **Avançado** com parâmetros, árvore de blocos e
-propriedades — nada foi apagado, só saiu da frente. Um teste falha se a tela
-padrão passar de 8 controles.
+`tests/test_desempenho.py` falha se qualquer receita passar de 16 ms por quadro.
+É o que impede isso de acontecer de novo sem ninguém perceber.
 
 ## A peça: só segurando o fio
 
@@ -212,7 +236,7 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 
 ## Estado
 
-**Fases 1, 3, 5 e parte da 2 implementadas.** 171 testes passando.
+**Fases 1, 3, 5 e parte da 2 implementadas.** 191 testes passando.
 
 | Módulo | Estado |
 |---|---|
@@ -220,7 +244,7 @@ coaxiais, e o εr do PLA é corrigido pelo infill via Lichtenecker
 | `cst/vba.py` — emissor VBA paramétrico | pronto |
 | `cad/` — sweep, clamshell, export | pronto |
 | `io/cst_params_in.py` + `antfdm sync` | pronto |
-| `gui/` — editor por gestos, paleta arrastável, undo | pronto |
+| `gui/` — editor por arrasto ao vivo, paleta arrastável, undo | pronto |
 | `check/rules.py` + `antfdm check` — avisos com correção | pronto |
 | `core/solve.py` — arrastar edita o parâmetro | pronto |
 | `blocks/` — cursor simbólico, 8 blocos, registro | pronto |

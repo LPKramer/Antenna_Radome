@@ -358,3 +358,134 @@ def test_cli_print_gera_a_peca(tmp_path):
     card = (tmp_path / "out" / "t_print_card.txt").read_text(encoding="utf-8")
     assert "parafusos" in card
     assert "pinos" not in card and "coax" not in card  # sumiram da peca
+
+
+# --------------------------------------------------------------------------
+# arrasto ao vivo: o coracao do pedido
+# --------------------------------------------------------------------------
+
+
+def test_arrasto_move_durante_o_movimento():
+    """A antena tem que acompanhar o cursor, nao pular ao soltar.
+
+    Este teste falharia na versao anterior: o arrasto so aplicava no
+    mouseRelease, porque o redesenho custava 161 ms e eu desliguei o ao vivo em
+    vez de consertar a lentidao.
+    """
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)  # dipolo
+        comprimentos = []
+        w.canvas.arrastoIniciado.emit(85.0, 0.0, False)
+        for x in (95.0, 105.0, 115.0):
+            w.canvas.arrastoMovido.emit(x, 0.0, False)
+            comprimentos.append(
+                w._ws.wire("braco_1").centerline.length(w._ws.params)
+            )
+        w.canvas.arrastoSolto.emit(115.0, 0.0, False)
+
+        assert len(set(comprimentos)) == 3, comprimentos
+        assert comprimentos == sorted(comprimentos)
+    finally:
+        w.close()
+
+
+def test_arrasto_no_vazio_desenha_um_fio_num_gesto():
+    """Sem selecionar nada e sem dialogo: apertar, arrastar, soltar."""
+    w = _janela()
+    try:
+        assert w._spec.wires == []
+        w.canvas.arrastoIniciado.emit(0.0, 0.0, False)
+        w.canvas.arrastoMovido.emit(50.0, 0.0, False)
+        w.canvas.arrastoSolto.emit(85.0, 0.0, False)
+
+        assert len(w._spec.wires) == 2  # braco e espelho
+        assert w._spec.feed is not None
+        ws = w._ws
+        assert ws.wire("braco_1").centerline.length(ws.params) == pytest.approx(
+            83.0, abs=1.0  # 85 menos Gap/2
+        )
+    finally:
+        w.close()
+
+
+def test_arrasto_com_antena_existente_cria_elemento_solto():
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)
+        antes = len(w._spec.wires)
+        w.canvas.arrastoIniciado.emit(-50.0, -80.0, False)
+        w.canvas.arrastoMovido.emit(0.0, -80.0, False)
+        w.canvas.arrastoSolto.emit(50.0, -80.0, False)
+        assert len(w._spec.wires) == antes + 1
+        assert w._spec.wires[-1].role == "parasitic"
+    finally:
+        w.close()
+
+
+def test_arrasto_nao_acumula_edicoes_a_cada_quadro():
+    """Cada quadro parte do estado do inicio do arrasto, nao do quadro anterior.
+
+    Sem isso o fio cresceria a cada pixel de movimento.
+    """
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)
+        w.canvas.arrastoIniciado.emit(85.0, 0.0, False)
+        for _ in range(10):
+            w.canvas.arrastoMovido.emit(100.0, 0.0, False)  # sempre o MESMO ponto
+        w.canvas.arrastoSolto.emit(100.0, 0.0, False)
+        assert w._ws.wire("braco_1").centerline.length(
+            w._ws.params
+        ) == pytest.approx(98.0, abs=1.0)
+    finally:
+        w.close()
+
+
+def test_arrastar_ponta_mantem_o_parametro():
+    """Arrastar edita o PARAMETRO; a geometria nunca vira numero solto."""
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)
+        w.canvas.arrastoIniciado.emit(85.0, 0.0, False)
+        w.canvas.arrastoMovido.emit(110.0, 0.0, False)
+        w.canvas.arrastoSolto.emit(110.0, 0.0, False)
+
+        campo = w._spec.wires[0].blocks[0]["len"]
+        assert campo in w._spec.params, f"campo virou literal: {campo!r}"
+
+        from antfdm.cst import vba
+
+        codigo = "\n".join(b.code for b in vba.emit(w._ws))
+        assert "MakeSureParameterExists" in codigo
+    finally:
+        w.close()
+
+
+def test_desfazer_volta_o_arrasto_inteiro():
+    """Um arrasto e uma acao so, por mais quadros que ele tenha tido."""
+    w = _janela()
+    try:
+        w.canvas.cliqueEm.emit(85.0, 0.0, False)
+        antes = w._ws.wire("braco_1").centerline.length(w._ws.params)
+        w.canvas.arrastoIniciado.emit(85.0, 0.0, False)
+        for x in (95.0, 105.0, 115.0):
+            w.canvas.arrastoMovido.emit(x, 0.0, False)
+        w.canvas.arrastoSolto.emit(115.0, 0.0, False)
+
+        w._desfazer()
+        assert w._ws.wire("braco_1").centerline.length(
+            w._ws.params
+        ) == pytest.approx(antes)
+    finally:
+        w.close()
+
+
+def test_sucesso_nao_abre_dialogo():
+    """So erro interrompe. Sucesso vira uma linha no rodape."""
+    import inspect
+
+    from antfdm.gui import app as app_mod
+
+    fonte = inspect.getsource(app_mod)
+    assert "def _info(" not in fonte, "o dialogo de sucesso voltou"

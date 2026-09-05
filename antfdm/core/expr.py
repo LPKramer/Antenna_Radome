@@ -13,10 +13,11 @@ explicita, e sao mais legiveis do que espalhar ``pi/180`` pelas expressoes.
 
 from __future__ import annotations
 
+import functools
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Callable, Iterable
 
 import sympy
 
@@ -93,6 +94,49 @@ def parse(source: str, names: Iterable[str] = ()) -> sympy.Expr:
         raise ExprError(f"expressao invalida: {source!r} ({exc})") from exc
 
 
+@functools.lru_cache(maxsize=8192)
+def _canonicalize_cache(source: str, names: tuple[str, ...]) -> str:
+    return canonicalize(source, names)
+
+
+# Namespace da avaliacao rapida.  A sintaxe canonica ja E Python, entao nao ha
+# traducao a fazer -- so garantir que as funcoes existam e que nada mais exista.
+_EVAL_NS: dict[str, object] = {
+    "__builtins__": {},
+    "sin": math.sin, "cos": math.cos, "tan": math.tan,
+    "asin": math.asin, "acos": math.acos, "atan": math.atan, "atn": math.atan,
+    "sinh": math.sinh, "cosh": math.cosh, "tanh": math.tanh,
+    "sqrt": math.sqrt, "exp": math.exp, "log": math.log,
+    "abs": abs, "max": max, "min": min,
+    "deg": math.degrees, "rad": math.radians,
+    "pi": math.pi,
+}
+
+
+@functools.lru_cache(maxsize=8192)
+def compilar(source: str) -> tuple[tuple[str, ...], object]:
+    """Compila a expressao uma unica vez.
+
+    Antes cada coordenada voltava pelo ``sympify`` a cada avaliacao, e como o
+    canvas reavalia a antena inteira a cada quadro isso aparecia como lentidao:
+    44 ms so de vertices num dipolo, 2.9 s numa espiral.
+
+    ``lambdify`` foi a primeira tentativa e piorou a espiral para 1.9 s: ela tem
+    547 vertices com expressoes todas diferentes, e lambdify faz geracao de
+    codigo para cada uma.  ``compile`` e a ferramenta certa aqui, porque a
+    sintaxe canonica ja e Python -- nao ha o que traduzir.
+
+    O cache e limitado porque arrastar gera expressoes novas a cada quadro
+    (``108.5``, ``108.6``, ...); sem limite ele cresceria sem parar.
+    """
+    livres = tuple(sorted(free_names(source)))
+    try:
+        codigo = compile(source, "<antfdm>", "eval")
+    except (SyntaxError, ValueError) as exc:
+        raise ExprError(f"expressao invalida: {source!r} ({exc})") from exc
+    return livres, codigo
+
+
 def free_names(source: str) -> set[str]:
     """Identificadores citados na expressao que nao sao funcao nem constante.
 
@@ -103,8 +147,14 @@ def free_names(source: str) -> set[str]:
     return {m.group(0) for m in _IDENT.finditer(source)} - set(_FUNCS)
 
 
+@functools.lru_cache(maxsize=8192)
 def simplify(source: str) -> str:
     """Junta termos semelhantes, para a expressao caber na Parameter List.
+
+    Em cache porque roda a cada reconstrucao da cadeia de blocos, e o sympy
+    aqui dentro era o custo dominante: 1.9 s so nos 547 vertices da espiral.
+    As expressoes se repetem entre quadros (o que muda no arrasto sao os
+    VALORES dos parametros, nao os textos), entao o cache acerta quase sempre.
 
     Uma cadeia de bloquinhos acumula termos que se cancelam --
     ``Gap/2 + Sec_inical + cordenadaNosolda - Gap/2`` -- e uma expressao assim
@@ -193,7 +243,7 @@ class ParamTable:
 
     def normalize(self, source: str) -> str:
         """Ajusta a caixa dos identificadores a grafia declarada nesta tabela."""
-        return canonicalize(str(source), self.params.keys())
+        return _canonicalize_cache(str(source), tuple(self.params))
 
     def __contains__(self, name: object) -> bool:
         return name in self.params
@@ -244,20 +294,36 @@ class ParamTable:
         return self._eval(str(source), self.values())
 
     def _eval(self, source: str, known: dict[str, float]) -> float:
+        # Numero puro nao precisa de sympy nem de cache -- e o caso mais comum
+        # durante um arrasto, em que o parametro vira literal a cada quadro.
+        direto = literal_value(source)
+        if direto is not None:
+            return direto
+
         source = self.normalize(source)
-        missing = free_names(source) - known.keys()
+        livres, fn = compilar(source)
+
+        missing = set(livres) - known.keys()
         if missing:
             raise ExprError(
                 f"expressao {source!r} usa parametro nao definido: {', '.join(sorted(missing))}"
             )
-        expr = parse(source, known.keys())
-        subs = {sympy.Symbol(k): v for k, v in known.items()}
+        ambiente = dict(_EVAL_NS)
+        for n in livres:
+            ambiente[n] = known[n]
         try:
-            value = complex(expr.subs(subs).evalf())
-        except (TypeError, ValueError) as exc:
+            value = eval(fn, ambiente)  # noqa: S307 - namespace restrito acima
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError,
+                NameError, AttributeError) as exc:
             raise ExprError(f"nao foi possivel avaliar {source!r}: {exc}") from exc
-        if abs(value.imag) > 1e-12:
-            raise ExprError(f"expressao {source!r} resultou em numero complexo: {value}")
-        if math.isnan(value.real) or math.isinf(value.real):
-            raise ExprError(f"expressao {source!r} resultou em {value.real}")
-        return value.real
+
+        if isinstance(value, complex):
+            if abs(value.imag) > 1e-12:
+                raise ExprError(
+                    f"expressao {source!r} resultou em numero complexo: {value}"
+                )
+            value = value.real
+        value = float(value)
+        if math.isnan(value) or math.isinf(value):
+            raise ExprError(f"expressao {source!r} resultou em {value}")
+        return value

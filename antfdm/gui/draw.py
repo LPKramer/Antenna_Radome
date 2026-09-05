@@ -116,6 +116,87 @@ def crescer(
     return Traco(f"trecho em {wire}", comp, wire)
 
 
+def _definir(spec: AntennaSpec, bloco: dict, campo: str, valor: float,
+             descricao: str) -> None:
+    """Grava um valor no campo do bloco SEM perder o parametrismo.
+
+    Se o campo ja aponta para um parametro, muda o valor daquele parametro.  Se
+    e literal, cria um parametro e aponta o campo para ele.  Nunca deixa um
+    numero solto na geometria: seria ``.X2 "42.5"`` no CST, e a Parameter List
+    perderia o ajuste.
+    """
+    atual = str(bloco.get(campo, "")).strip()
+    if atual in spec.params:
+        entrada = spec.params[atual]
+        if isinstance(entrada, dict):
+            entrada["expr"] = format_number(valor)
+        else:
+            spec.params[atual] = format_number(valor)
+        return
+    prefixo = "A" if campo == "angle" else "L"
+    nome = _proximo(spec, prefixo)
+    _add_param(spec, nome, valor, descricao)
+    bloco[campo] = nome
+
+
+def mover_ponta(
+    spec: AntennaSpec, wire: str, destino, livre: bool = False
+) -> Traco | None:
+    """A ponta do fio segue a mao: muda o comprimento E a direcao do ultimo trecho.
+
+    Puxar a ponta nao ACRESCENTA trecho -- se acrescentasse, cada arrasto dobraria
+    o numero de segmentos.  Trecho novo se ganha soltando um bloco na ponta.
+    """
+    alvo = _fio(spec, wire)
+    if alvo is None or alvo.mirror_of or not alvo.blocks:
+        return None
+
+    ws = spec.to_wireset()
+    verts = ws.wire(wire).centerline.points(ws.params)
+    if len(verts) < 2:
+        return None
+
+    anterior = verts[-2][:2]
+    comp, ang = _polar(np.asarray(destino, dtype=float)[:2], anterior, livre)
+
+    retos = [i for i, b in enumerate(alvo.blocks) if b.get("type") == "straight"]
+    if not retos:
+        return None
+    i_reto = retos[-1]
+    _definir(spec, alvo.blocks[i_reto], "len", comp, "Comprimento do trecho (mm)")
+
+    # Direcao: ajusta a dobra imediatamente anterior, ou o rumo inicial do fio
+    # quando o trecho e o primeiro.
+    dobras = [i for i in range(i_reto) if alvo.blocks[i].get("type") == "bend"]
+    if dobras:
+        rumo_antes = _rumo(verts[:-1]) if len(verts) >= 3 else 0.0
+        _definir(spec, alvo.blocks[dobras[-1]], "angle",
+                 _normaliza(ang - rumo_antes), "Angulo da dobra (graus)")
+    elif alvo.start is not None:
+        alvo.start.dir = format_number(_normaliza(ang))
+
+    return Traco(f"{wire}: {comp:.1f} mm", comp, wire)
+
+
+def novo_fio(
+    spec: AntennaSpec, de, para, livre: bool = False
+) -> Traco | None:
+    """Arrastar no vazio desenha um fio, de onde apertou ate onde soltou.
+
+    Sem antena ainda, o arrasto cria o dipolo inteiro -- a alimentacao precisa
+    ficar na origem para o espelho sair exato.
+    """
+    if not tem_antena(spec):
+        return primeiro_braco(spec, para, livre)
+
+    a = np.asarray(de, dtype=float)[:2]
+    b = np.asarray(para, dtype=float)[:2]
+    comp, ang = _polar(b, a, livre)
+    if comp < PASSO_MM * 2:
+        return None
+    return novo_elemento(spec, (a + b) / 2.0, comp, ang)
+
+
 def novo_elemento(
     spec: AntennaSpec, centro, comprimento: float, angulo: float = 90.0,
     nome: str | None = None,

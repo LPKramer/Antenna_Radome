@@ -71,6 +71,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._busy = 0
         self._hist = History()
         self._alvo = None  # o que esta sob o cursor agora
+        self._arrasto = None  # estado do arrasto em andamento
 
         self.canvas = AntennaCanvas()
         self.palette_blocos = BlockPalette()
@@ -89,7 +90,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_advanced()
 
         self.canvas.cliqueEm.connect(self._clique)
-        self.canvas.arrastoAte.connect(self._arrasto)
+        self.canvas.arrastoIniciado.connect(self._arrasto_inicio)
+        self.canvas.arrastoMovido.connect(self._arrasto_move)
+        self.canvas.arrastoSolto.connect(self._arrasto_fim)
         self.canvas.cursorEm.connect(self._hover)
         self.canvas.escPressionado.connect(self._desmarcar)
         self.canvas.set_hit_test(self._ha_alvo)
@@ -352,41 +355,67 @@ class MainWindow(QtWidgets.QMainWindow):
             5000,
         )
 
-    def _arrasto(self, x0: float, y0: float, x1: float, y1: float,
-                 livre: bool) -> None:
-        """Arrastar ponta, vertice ou aresta muda o comprimento do trecho.
+    # ------------------------------------------------------------------
+    # arrasto ao vivo: a antena acompanha o cursor
+    # ------------------------------------------------------------------
+    def _arrasto_inicio(self, x: float, y: float, livre: bool) -> None:
+        del livre
+        if self._spec is None:
+            return
+        self._hist.marcar(self._spec)
+        self._arrasto = {
+            "alvo": self._localizar(x, y),
+            "de": (x, y),
+            # Guarda o estado limpo: cada quadro recomeca daqui e aplica a
+            # posicao atual.  Sem isso as edicoes se acumulariam durante o
+            # arrasto e o fio cresceria a cada pixel.
+            "base": self._spec.model_copy(deep=True),
+        }
 
-        Puxar a ponta de um fio que ainda nao tem para onde crescer ESTENDE o
-        fio; puxar qualquer outra coisa ajusta o trecho que ja existe.
-        """
-        if self._spec is None or self._ws is None:
+    def _arrasto_move(self, x: float, y: float, livre: bool) -> None:
+        if self._arrasto is None or self._spec is None:
             return
-        alvo = self._localizar(x0, y0)
-        if alvo is None:
+        self._spec = self._arrasto["base"].model_copy(deep=True)
+        traco = self._aplicar_arrasto(x, y, livre)
+        try:
+            self._ws = self._spec.to_wireset() if self._spec.wires else None
+        except Exception:
+            self._ws = None
+        self.canvas.set_wireset(self._ws)
+        self.canvas.legenda(traco.descricao if traco else "", (x, y))
+
+    def _arrasto_fim(self, x: float, y: float, livre: bool) -> None:
+        if self._arrasto is None:
             return
-        if not alvo.editavel:
+        self._arrasto_move(x, y, livre)
+        alvo = self._arrasto["alvo"]
+        self._arrasto = None
+        self.canvas.legenda("")
+        self._apos_edicao()
+        if alvo is not None and not alvo.editavel:
             self.status.showMessage(
                 f"{alvo.wire} acompanha o outro braco; arraste o original", 4000
             )
-            return
 
-        indice = alvo.indice + 1 if alvo.tipo == "aresta" else alvo.indice
-        if indice == 0:
-            self.status.showMessage("o inicio do fio nao se move sozinho", 3000)
-            return
+    def _aplicar_arrasto(self, x: float, y: float, livre: bool):
+        """O que o arrasto significa depende do que estava sob o cursor."""
+        alvo = self._arrasto["alvo"]
+        de = self._arrasto["de"]
+        try:
+            if alvo is None:
+                return draw.novo_fio(self._spec, de, (x, y), livre)
+            if not alvo.editavel:
+                return None
+            if alvo.tipo == "ponta" and alvo.indice > 0:
+                return draw.mover_ponta(self._spec, alvo.wire, (x, y), livre)
+            indice = alvo.indice + 1 if alvo.tipo == "aresta" else alvo.indice
+            if indice <= 0:
+                return None
+            return self._ajustar_trecho(alvo.wire, indice, (x, y))
+        except Exception:
+            return None
 
-        self._hist.marcar(self._spec)
-        ok, msg = self._ajustar_trecho(alvo.wire, indice, (x1, y1))
-        if not ok:
-            self._spec = self._hist.desfazer(self._spec) or self._spec
-            if msg:
-                self.status.showMessage(msg, 5000)
-            return
-        if msg:
-            self.status.showMessage(msg, 4000)
-        self._apos_edicao()
-
-    def _ajustar_trecho(self, fio: str, indice: int, destino) -> tuple[bool, str]:
+    def _ajustar_trecho(self, fio: str, indice: int, destino):
         """Faz o vertice ``indice`` cair em ``destino``, editando o parametro."""
         import numpy as np
 
@@ -394,32 +423,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
         alvo = next((w for w in self._spec.wires if w.name == fio), None)
         if alvo is None or not alvo.blocks:
-            return False, ""
-
-        verts = self._ws.wire(fio).centerline.points(self._ws.params)
+            return None
+        ws = self._spec.to_wireset()
+        verts = ws.wire(fio).centerline.points(ws.params)
         if indice >= len(verts):
-            return False, ""
+            return None
         comprimento = float(
             np.linalg.norm(np.asarray(destino) - verts[indice - 1][:2])
         )
-
         retos = [i for i, b in enumerate(alvo.blocks) if b.get("type") == "straight"]
         if not retos:
-            return False, "este fio nao tem trecho reto para ajustar"
+            return None
         bloco = retos[min(indice, len(retos)) - 1]
         campo = str(alvo.blocks[bloco].get("len", ""))
 
-        edit = solve_field(campo, comprimento, self._ws.params)
-        if edit.kind == "ambiguous":
-            return False, (
-                f"depende de {', '.join(edit.candidates)}; ajuste no Avancado"
-            )
+        edit = solve_field(campo, comprimento, ws.params)
         if not edit.ok:
-            return False, edit.reason
+            return None
         apply_edit(self._spec, edit, wire=self._spec.wires.index(alvo),
                    block=bloco, field_name="len")
-        extra = f"tambem mudou: {', '.join(edit.affects)}" if edit.affects else ""
-        return True, extra
+        return draw.Traco(f"{fio}: {comprimento:.1f} mm", comprimento, fio)
 
     def _apagar_selecionado(self) -> None:
         if self._spec is None or not self._spec.wires:
@@ -775,10 +798,11 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             self._erro("Falha ao gerar o VBA", str(exc))
             return
-        self._info(
-            "Macro gerada",
-            f"{out}\n\n{n} blocos.\n\nNo CST: Home > Macros > Run Macro. "
-            "Rodar de novo PRESERVA o que voce ja calibrou.",
+        # Sucesso nao interrompe: vira uma linha no rodape que some sozinha.
+        # So o erro merece parar o trabalho e exigir um clique.
+        self.status.showMessage(
+            f"macro gerada: {out}  ({n} blocos)  —  no CST: Home > Macros > Run Macro",
+            12000,
         )
 
     def _gerar_stl(self) -> None:
@@ -799,7 +823,7 @@ class MainWindow(QtWidgets.QMainWindow):
             report.build(ws, clam).write(outdir / f"{ws.name}_print_card.txt")
             return "\n".join([str(c) for c in checks] + [""] + [str(p) for p in escritos])
 
-        self._rodar(trabalho, "Gerando o radome...", "Radome gerado")
+        self._rodar(trabalho, "gerando o radome...", "radome gerado")
 
     def _sync(self) -> None:
         if self._spec is None:
@@ -818,13 +842,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._erro("Nao consegui ler o projeto", str(exc))
             return
         if not mudancas:
-            self._info("Sync", "Nada mudou.")
+            self.status.showMessage("nada mudou: o spec ja esta igual ao CST", 6000)
             return
         self._apos_edicao()
-        texto = "\n".join(str(c) for c in mudancas)
-        if ignorados:
-            texto += "\n\nso no CST: " + ", ".join(sorted(ignorados))
-        self._info(f"{len(mudancas)} parametro(s) vieram do CST", texto)
+        extra = f"  (so no CST: {', '.join(sorted(ignorados))})" if ignorados else ""
+        self.status.showMessage(
+            f"{len(mudancas)} parametro(s) vieram do CST: "
+            + ", ".join(c.name for c in mudancas) + extra,
+            12000,
+        )
 
     # ------------------------------------------------------------------
     def _rodar(self, fn, mensagem: str, titulo: str) -> None:
@@ -832,26 +858,27 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         self.status.showMessage(mensagem)
         job = _Job(fn)
-        job.sinais.done.connect(lambda t: self._fim(lambda: self._info(titulo, t)))
+        job.sinais.done.connect(
+            lambda t: self._fim(lambda: self._pronto_sem_interromper(titulo, t))
+        )
         job.sinais.failed.connect(lambda t: self._fim(lambda: self._erro("Falhou", t)))
         self._pool.start(job)
+
+    def _pronto_sem_interromper(self, titulo: str, detalhe: str) -> None:
+        """Resultado bom vai para o rodape; so o erro merece parar o trabalho."""
+        primeira = next(
+            (l for l in detalhe.splitlines() if l.strip().endswith((".stl", ".step"))),
+            "",
+        )
+        self.status.showMessage(
+            f"{titulo}: {primeira.strip()}" if primeira else titulo, 12000
+        )
 
     def _fim(self, acao) -> None:
         self._busy = max(0, self._busy - 1)
         if self._busy == 0:
             QtWidgets.QApplication.restoreOverrideCursor()
         acao()
-
-    def _info(self, titulo: str, texto: str) -> None:
-        box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle(titulo)
-        box.setIcon(QtWidgets.QMessageBox.Information)
-        box.setText(titulo)
-        if len(texto) > 400:
-            box.setDetailedText(texto)
-        else:
-            box.setInformativeText(texto)
-        box.exec()
 
     def _erro(self, titulo: str, texto: str) -> None:
         box = QtWidgets.QMessageBox(self)
